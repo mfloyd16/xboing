@@ -1,46 +1,143 @@
-#ifndef _DEMO_BLOCKLOADER_H_
-#define _DEMO_BLOCKLOADER_H_
+/**
+ * @file demo_blockloader.h
+ * @brief Block system interface for XBoing
+ * 
+ * Manages level loading, block rendering, and block collision detection.
+ */
+
+#ifndef DEMO_BLOCKLOADER_H
+#define DEMO_BLOCKLOADER_H
 
 #include <raylib.h>
 #include <stdbool.h>
+#include "core/types.h"
 
-typedef struct Block {
-	int blockOffsetX;
-	int blockOffsetY;
-	Vector2 position;
-    Texture2D texture;
-	char type;
-	bool active;
-} Block;
+// =============================================================================
+// Public Functions - Initialization
+// =============================================================================
 
-typedef enum {
-	UPPER_LEFT,
-	UPPER_RIGHT,
-	LOWER_LEFT,
-	LOWER_RIGHT
-} CORNERS;
+/**
+ * @brief Initialize the play area dimensions
+ */
+void Blocks_InitializePlayArea(void);
 
-typedef enum {
-	WALL_LEFT,
-	WALL_RIGHT,
-	WALL_TOP,
-	WALL_BOTTOM
-} WALLS;
+/**
+ * @brief Load all block textures
+ * @return true if successful, false otherwise
+ */
+bool Blocks_LoadTextures(void);
 
-bool loadBlocks(const char* filename);
-void drawBlocks(void);
-void drawBorder(void);
-bool loadBlockTextures(void);
-void freeBlockTextures(void);
-void addBlock(int row, int col, char ch);
-void initializePlayArea(void);
-Rectangle getBlockCollisionRec(int row, int col);
-int getBlockRowMax(void);
-int getBlockColMax(void);
-bool isBlockActive(int row, int col);
-void activateBlock(int row, int col);
-Rectangle getPlayWall(WALLS wall);
-void drawWalls(void);
-int getBlockCount(void);
+/**
+ * @brief Free all block textures
+ */
+void Blocks_FreeTextures(void);
 
-#endif // _DEMO_BLOCKLOADER_H
+// =============================================================================
+// Public Functions - Level Loading
+// =============================================================================
+
+/**
+ * @brief Load a level from a file
+ * @param filename Path to the level file
+ * @return true if successful, false otherwise
+ */
+bool Blocks_LoadLevel(const char *filename);
+
+// =============================================================================
+// Public Functions - Rendering
+// =============================================================================
+
+/**
+ * @brief Draw all active blocks
+ */
+void Blocks_Draw(void);
+
+/**
+ * @brief Draw the play area border
+ */
+void Blocks_DrawBorder(void);
+
+/**
+ * @brief Draw the wall areas (gray regions outside play area)
+ */
+void Blocks_DrawWalls(void);
+
+// =============================================================================
+// Public Functions - Block Queries
+// =============================================================================
+
+/**
+ * @brief Get the collision rectangle for a block
+ * @param row Block row
+ * @param col Block column
+ * @return Rectangle representing block bounds
+ */
+Rectangle Blocks_GetCollisionRect(int row, int col);
+
+/**
+ * @brief Check if a block is active
+ * @param row Block row
+ * @param col Block column
+ * @return true if block exists and is active
+ */
+bool Blocks_IsActive(int row, int col);
+
+/**
+ * @brief Get the maximum number of rows
+ * @return Maximum row count
+ */
+int Blocks_GetRowMax(void);
+
+/**
+ * @brief Get the maximum number of columns
+ * @return Maximum column count
+ */
+int Blocks_GetColMax(void);
+
+/**
+ * @brief Get the count of remaining destructible blocks
+ * @return Number of blocks remaining
+ */
+int Blocks_GetRemainingCount(void);
+
+// =============================================================================
+// Public Functions - Block Interaction
+// =============================================================================
+
+/**
+ * @brief Activate a block (handle collision with ball)
+ * @param row Block row
+ * @param col Block column
+ */
+void Blocks_Activate(int row, int col);
+
+// =============================================================================
+// Public Functions - Wall Queries
+// =============================================================================
+
+/**
+ * @brief Get the rectangle for a wall area
+ * @param wall Which wall to query
+ * @return Rectangle representing the wall area
+ */
+Rectangle Blocks_GetWall(Wall wall);
+
+// =============================================================================
+// Legacy Compatibility
+// =============================================================================
+#define initializePlayArea() Blocks_InitializePlayArea()
+#define loadBlockTextures() Blocks_LoadTextures()
+#define freeBlockTextures() Blocks_FreeTextures()
+#define loadBlocks(f) Blocks_LoadLevel(f)
+#define drawBlocks() Blocks_Draw()
+#define drawBorder() Blocks_DrawBorder()
+#define drawWalls() Blocks_DrawWalls()
+#define getBlockCollisionRec(r,c) Blocks_GetCollisionRect(r,c)
+#define isBlockActive(r,c) Blocks_IsActive(r,c)
+#define getBlockRowMax() Blocks_GetRowMax()
+#define getBlockColMax() Blocks_GetColMax()
+#define getBlockCount() Blocks_GetRemainingCount()
+#define activateBlock(r,c) Blocks_Activate(r,c)
+#define getPlayWall(w) Blocks_GetWall(w)
+
+#endif // DEMO_BLOCKLOADER_H

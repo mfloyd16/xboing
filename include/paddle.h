@@ -1,167 +1,148 @@
-#ifndef _PADDLE_H_
-#define _PADDLE_H_
-
-/*
- * XBoing - An X11 blockout style computer game
- *
- * (c) Copyright 1993, 1994, 1995, Justin C. Kibell, All Rights Reserved
- *
- * The X Consortium, and any party obtaining a copy of these files from
- * the X Consortium, directly or indirectly, is granted, free of charge, a
- * full and unrestricted irrevocable, world-wide, paid up, royalty-free,
- * nonexclusive right and license to deal in this software and
- * documentation files (the "Software"), including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons who receive
- * copies from any such party to do so.  This license includes without
- * limitation a license to do the foregoing actions under any patents of
- * the party supplying this software to the X Consortium.
- *
- * In no event shall the author be liable to any party for direct, indirect,
- * special, incidental, or consequential damages arising out of the use of
- * this software and its documentation, even if the author has been advised
- * of the possibility of such damage.
- *
- * The author specifically disclaims any warranties, including, but not limited
- * to, the implied warranties of merchantability and fitness for a particular
- * purpose.  The software provided hereunder is on an "AS IS" basis, and the
- * author has no obligation to provide maintenance, support, updates,
- * enhancements, or modifications.
+/**
+ * @file paddle.h
+ * @brief Paddle system interface for XBoing
+ * 
+ * Manages paddle state, movement, rendering, and size changes.
  */
 
-/* 
- * =========================================================================
- *
- * $Id: paddle.h,v 1.1.1.1 1994/12/16 01:36:53 jck Exp $
- * $Source: /usr5/legends/jck/xb/master/xboing/include/paddle.h,v $
- * $Revision: 1.1.1.1 $
- * $Date: 1994/12/16 01:36:53 $
- *
- * $Log: paddle.h,v $
- * Revision 1.1.1.1  1994/12/16  01:36:53  jck
- * The XBoing distribution requires configuration management. This is why the
- * cvs utility is being used. This is the initial import of all source etc..
- *
- *
- * =========================================================================
- */
+#ifndef PADDLE_H
+#define PADDLE_H
 
-#define PADDLE_NONE		0
-#define PADDLE_LEFT		1
-#define PADDLE_RIGHT	2
+#include <stdbool.h>
+#include <raylib.h>
+#include "core/types.h"
+#include "core/constants.h"
 
-#define DIST_BASE   	30
-
-#define SIZE_UP         1
-#define SIZE_DOWN       2
-
+// =============================================================================
+// Public Functions - Initialization
+// =============================================================================
 
 /**
- * @brief Loads paddle images into memory as Raylib Texture2D
- * @note If an image fails to load, Raylib close window flag is set to true
- * 
+ * @brief Load paddle textures
+ * @return true if successful, false otherwise
  */
-bool InitialisePaddle(void);
-
+bool Paddle_Initialize(void);
 
 /**
- * @brief Unloads paddle images loaded with InitialisePaddle()
- * 
+ * @brief Free paddle resources
  */
-void FreePaddle(void);
-
+void Paddle_Shutdown(void);
 
 /**
- * @brief Draws the current paddle image at the current paddle position
- * 
+ * @brief Reset paddle to starting position and size
  */
-void DrawPaddle(void);
+void Paddle_Reset(void);
 
+// =============================================================================
+// Public Functions - Rendering
+// =============================================================================
 
 /**
- * @brief Moves the paddle horizontally.
- * 
- * The paddle will move horizontally a fixed amount based on the direction passed. 
- * The direction moved takes into account the current value of the Reverse flag.
- * 
- * @param direction PADDLE_LEFT or PADDLE_RIGHT to move
+ * @brief Draw the paddle
  */
-void MovePaddle(int direction);
+void Paddle_Draw(void);
 
+// =============================================================================
+// Public Functions - Movement
+// =============================================================================
 
 /**
- * @brief Sets the paddle to the default size, turns off Reverse, and centers the paddle on the screen
- * 
+ * @brief Move paddle in a direction
+ * @param direction PADDLE_LEFT, PADDLE_RIGHT, or PADDLE_NONE
  */
-void ResetPaddleStart(void);
-
+void Paddle_Move(PaddleDirection direction);
 
 /**
- * @brief Returns the paddle size in pixels
- * 
- * @return int 
+ * @brief Set paddle position directly (for mouse control)
+ * @param x X coordinate position
  */
-int GetPaddleSize(void);
+void Paddle_SetPosition(float x);
 
+// =============================================================================
+// Public Functions - State Queries
+// =============================================================================
 
 /**
- * @brief Returns the paddle size as a description
- * 
- * @return char* c-string description of size
+ * @brief Get paddle width in pixels
+ * @return Paddle width
  */
-char *GetPaddleDescription(void);
-
+int Paddle_GetWidth(void);
 
 /**
- * @brief Returns the paddle position based on upper left corner
- * 
- * @return int upper left paddle pixel
+ * @brief Get paddle X position
+ * @return X coordinate of paddle's left edge
  */
-int GetPaddlePositionX(void);
-
-int GetPaddlePositionY(void);
-
-Rectangle GetPaddleCollisionRec(void);
-
+int Paddle_GetPositionX(void);
 
 /**
- * @brief Returns the Reverse flag value
- * 
- * @return int 1 for reverse on, 0 for reverse off
+ * @brief Get paddle Y position
+ * @return Y coordinate of paddle's top edge
  */
-int GetPaddleReverse(void);
-
+int Paddle_GetPositionY(void);
 
 /**
- * @brief Flips the value of the reverse flag
- * 
+ * @brief Get paddle collision rectangle
+ * @return Rectangle representing paddle bounds
  */
-void ToggleReverse(void);
-
+Rectangle Paddle_GetCollisionRect(void);
 
 /**
- * @brief Turns reverse flag off
- * 
+ * @brief Get ball spawn point on paddle
+ * @return Center point on top of paddle
  */
-void SetReverseOff(void);
-
+Vector2 Paddle_GetBallSpawnPoint(void);
 
 /**
- * @brief Changes the size of the paddle
- * 
- * Increases or decreases the size of the paddle by one increment.
- * Does nothing if paddle is at the maximum or minimum size
- * 
- * @param changeDirection SIZE_UP or SIZE_DOWN
+ * @brief Check if reverse controls are active
+ * @return true if reversed, false otherwise
  */
-void ChangePaddleSize(int changeDirection);
+bool Paddle_IsReversed(void);
 
-Vector2 GetBallSpawnPointOnPaddle();
+/**
+ * @brief Get paddle size description
+ * @return String describing current size
+ */
+const char *Paddle_GetSizeDescription(void);
 
-void SetPaddlePosition(float x);
+// =============================================================================
+// Public Functions - State Modification
+// =============================================================================
 
-// not used in program ??
-// #define PADDLE_HC  		4
-// #define PADDLE_HEIGHT 	9
+/**
+ * @brief Toggle reverse control mode
+ */
+void Paddle_ToggleReverse(void);
 
-#endif
+/**
+ * @brief Turn off reverse mode
+ */
+void Paddle_SetReverseOff(void);
+
+/**
+ * @brief Change paddle size
+ * @param direction SIZE_UP or SIZE_DOWN
+ */
+void Paddle_ChangeSize(SizeChange direction);
+
+// =============================================================================
+// Legacy Compatibility
+// =============================================================================
+#define InitialisePaddle() Paddle_Initialize()
+#define FreePaddle() Paddle_Shutdown()
+#define DrawPaddle() Paddle_Draw()
+#define MovePaddle(d) Paddle_Move(d)
+#define SetPaddlePosition(x) Paddle_SetPosition(x)
+#define GetPaddleSize() Paddle_GetWidth()
+#define GetPaddlePositionX() Paddle_GetPositionX()
+#define GetPaddlePositionY() Paddle_GetPositionY()
+#define GetPaddleCollisionRec() Paddle_GetCollisionRect()
+#define GetBallSpawnPointOnPaddle() Paddle_GetBallSpawnPoint()
+#define GetPaddleReverse() Paddle_IsReversed()
+#define GetPaddleDescription() Paddle_GetSizeDescription()
+#define ResetPaddleStart() Paddle_Reset()
+#define ToggleReverse() Paddle_ToggleReverse()
+#define SetReverseOff() Paddle_SetReverseOff()
+#define ChangePaddleSize(d) Paddle_ChangeSize(d)
+#define GetPaddleWidth() ((float)Paddle_GetWidth())
+
+#endif // PADDLE_H

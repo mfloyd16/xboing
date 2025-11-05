@@ -1,303 +1,346 @@
-#include <stdbool.h>
-#include <raylib.h>
-#include <math.h>
-#include <stdlib.h>
-#include <stdio.h>
+/**
+ * @file demo_ball.c
+ * @brief Ball system implementation for XBoing
+ * 
+ * Manages ball state, movement, collision detection with blocks/walls/paddle.
+ */
 
 #include "demo_ball.h"
+#include "core/constants.h"
+#include "core/types.h"
 #include "demo_gamemodes.h"
 #include "demo_blockloader.h"
+#include "paddle.h"
 #include "audio.h"
+#include <raylib.h>
+#include <raymath.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
-#define BALL_TEXTURES "resource/textures/balls/"
+// =============================================================================
+// Constants
+// =============================================================================
+static const float BOUNCE_ANGLE_VARIANCE_DEG = 10.0f;
+static const float RELEASE_ANGLE_MIN = PI / 4.0f;    // 45 degrees
+static const float RELEASE_ANGLE_MAX = 3.0f * PI / 4.0f; // 135 degrees
+static const float GUIDE_ROTATION_SPEED = PI / 2.0f; // radians per second
 
-const int INITIAL_BALL_SPEED = 400;  // pixels per second
-const int MAX_BALL_IMG_COUNT = 4;
-const int GUIDE_LENGTH = 100;
+// =============================================================================
+// Global State
+// =============================================================================
+static Ball g_ball = {0};
+static float g_releaseAngle = 0.0f;
 
-const float bouncVariance = 10.0f;
+// =============================================================================
+// Forward Declarations
+// =============================================================================
+static Vector2 GetBallSpawnPoint(void);
+static void AnimateBall(void);
+static void DrawGuide(void);
+static void HandleWallCollisions(bool *flipX, bool *flipY, bool *stepBack);
+static void HandlePaddleCollision(bool *flipY);
+static void HandleBlockCollisions(bool *flipX, bool *flipY, bool *stepBack);
 
-typedef struct {
-    Texture2D img[4];
-    int imgIndex;
-    Vector2 position;
-    Vector2 oldPosition;
-    Vector2 velocity; // directional velocity
-    int speed;        // pixels per second
-    bool sticky;      // it will stick to paddle next collision
-    bool attached;    // it is attached to the paddle
-    bool spawned;
-    Vector2 anchor;
-} Ball;
+// =============================================================================
+// Public Functions
+// =============================================================================
 
-Ball ball = {0};
-
-float releaseAngle = 0;
-
-Vector2 GetSpawnPoint(void);
-void AnimateBall(void);
-Rectangle GetBallCollisionRec(void);
-void DrawGuide(void);
-
-
-bool InitializeBall(void) {
-
+bool Ball_Initialize(void) {
     for (int i = 0; i < MAX_BALL_IMG_COUNT; i++) {
-
         char fileName[64];
-        snprintf(fileName, sizeof(fileName), BALL_TEXTURES "ball%d.png", i + 1);
+        snprintf(fileName, sizeof(fileName), PATH_BALL_TEXTURES "ball%d.png", i + 1);
 
-        ball.img[i] = LoadTexture(fileName);
-        if (ball.img->id == 0)  return false;
-
+        g_ball.img[i] = LoadTexture(fileName);
+        
+        if (g_ball.img[i].id == 0) {
+            fprintf(stderr, "[Ball] Failed to load texture: %s\n", fileName);
+            return false;
+        }
     }
 
+    fprintf(stdout, "[Ball] Successfully loaded %d ball textures\n", MAX_BALL_IMG_COUNT);
     return true;
-
 }
 
-
-void FreeBall(void) {
+void Ball_Shutdown(void) {
     for (int i = 0; i < MAX_BALL_IMG_COUNT; i++) {
-        UnloadTexture(ball.img[i]);
+        UnloadTexture(g_ball.img[i]);
+    }
+    fprintf(stdout, "[Ball] Resources freed\n");
+}
+
+void Ball_Reset(void) {
+    g_ball.position = GetBallSpawnPoint();
+    g_ball.sticky = false;
+    g_ball.attached = false;
+    g_ball.spawned = true;
+    g_ball.speed = 0;
+    g_ball.velocity = (Vector2){0, 0};
+    g_releaseAngle = PI / 2.0f;  // Straight up
+}
+
+void Ball_Release(void) {
+    if (g_ball.spawned) {
+        g_ball.spawned = false;
+        g_ball.speed = INITIAL_BALL_SPEED;
+        g_ball.velocity.x = cos(g_releaseAngle) * g_ball.speed;
+        g_ball.velocity.y = sin(g_releaseAngle) * g_ball.speed;
+        Audio_PlaySound(SND_BALLSHOT);
+    }
+
+    if (g_ball.attached) {
+        g_ball.attached = false;
+        Audio_PlaySound(SND_BALLSHOT);
     }
 }
 
-
-void ResetBall(void) {
-
-    ball.position = GetSpawnPoint();
-    ball.sticky = false;
-    ball.attached = false;
-    ball.spawned = true;
-
-    ball.speed = 0;
-    ball.velocity.x = 0;
-    ball.velocity.y = 0;
-
-    releaseAngle = PI / 2.0f;  // points straight up
-
-}
-
-
-void ReleaseBall(void) {
-
-    if (ball.spawned) {
-
-        ball.spawned = false;
-        ball.speed = INITIAL_BALL_SPEED;
-
-        ball.velocity.x = cos(releaseAngle) * ball.speed;
-        ball.velocity.y = sin(releaseAngle) * ball.speed;
-        startSound(SND_BALLSHOT);   
-    }
-
-    if (ball.attached){
-        ball.attached = false;
-        startSound(SND_BALLSHOT);   
-    }
-}
-
-
-Vector2 GetSpawnPoint(void) {
-    Vector2 spawn = GetBallSpawnPointOnPaddle();
-    return (Vector2){
-        spawn.x - ball.img[ball.imgIndex].width / 2,
-        spawn.y - ball.img[ball.imgIndex].height
-    };
-}
-
-
-void DrawBall(void) {
+void Ball_Draw(void) {
     AnimateBall();
-    if (ball.spawned) DrawGuide();
-    DrawTexture(ball.img[ball.imgIndex], ball.position.x, ball.position.y, WHITE);
-}
-
-
-void DrawGuide(void) {
-
-    const int ROTATING_LEFT = 1;
-    const int ROTATING_RIGHT = -1;
-
-    const float centerAngle = PI / 2.0f;  // 90 degrees straight up
-    const float angleSway = PI / 4.0f;    // +/- 45 degrees
-
-    static float rotateSpeed = PI / 2.0f; // degrees per second
-    static int direction = 1;
-
-    // rotate the guide between 45 and 135 degrees
-    releaseAngle += rotateSpeed * GetFrameTime();
-    if (releaseAngle > centerAngle + angleSway && direction == ROTATING_LEFT) {
-        direction = ROTATING_RIGHT;
-        rotateSpeed *= -1;
-    } else if (releaseAngle < centerAngle - angleSway && direction == ROTATING_RIGHT) {
-        direction = ROTATING_LEFT;
-        rotateSpeed *= -1;
+    
+    if (g_ball.spawned) {
+        DrawGuide();
     }
-
-    Vector2 startPoint = {
-        ball.position.x + ball.img->width / 2,
-        ball.position.y + ball.img->height / 2
-    };
-
-    Vector2 endPoint = {
-        startPoint.x + cos(releaseAngle) * GUIDE_LENGTH,
-        startPoint.y - sin(releaseAngle) * GUIDE_LENGTH
-    };
-
-    DrawLineV(startPoint, endPoint, YELLOW);
-
+    
+    DrawTexture(g_ball.img[g_ball.imgIndex], 
+                (int)g_ball.position.x, 
+                (int)g_ball.position.y, 
+                WHITE);
 }
 
-
-void AnimateBall(void) {
-
-    static float elapsedTime = 0.0f;
-
-    elapsedTime += GetFrameTime();
-
-    if (elapsedTime > 0.1f) {
-        elapsedTime = 0.0f;
-        ball.imgIndex = (ball.imgIndex + 1) % 4;
-    }
-
-}
-
-
-void MoveBall(void) {
-
-    ball.oldPosition = ball.position;
+void Ball_Update(void) {
+    g_ball.oldPosition = g_ball.position;
     bool stepBack = false;
+    bool flipX = false;
+    bool flipY = false;
 
-    // keep spawned ball on paddle center
-    if (ball.spawned) {
-        ball.position = GetSpawnPoint();
+    // Keep spawned ball on paddle center
+    if (g_ball.spawned) {
+        g_ball.position = GetBallSpawnPoint();
         return;
     }
 
-    if (ball.attached) {
-        ball.position = (Vector2){
-            GetPaddlePositionX() - ball.anchor.x,
-            GetPaddlePositionY() - ball.anchor.y
+    // Handle attached ball (sticky paddle)
+    if (g_ball.attached) {
+        g_ball.position = (Vector2){
+            GetPaddlePositionX() - g_ball.anchor.x,
+            GetPaddlePositionY() - g_ball.anchor.y
         };
 
-        // check is the ball is hanging off the edge of the paddle
-        // when the paddle is moved against the wall
-        int boundry = getPlayWall(WALL_LEFT).width;
-        if (ball.position.x < boundry) {
-            ball.position.x = boundry;
-            ball.anchor.x = GetPaddlePositionX() - ball.position.x;
+        // Keep ball from hanging off edges when paddle hits walls
+        int boundaryLeft = getPlayWall(WALL_LEFT).width;
+        if (g_ball.position.x < boundaryLeft) {
+            g_ball.position.x = boundaryLeft;
+            g_ball.anchor.x = GetPaddlePositionX() - g_ball.position.x;
         }
 
-        boundry = getPlayWall(WALL_RIGHT).x - ball.img->width;
-        if (ball.position.x > boundry) {
-            ball.position.x = boundry;
-            ball.anchor.x = GetPaddlePositionX() - ball.position.x;
+        int boundaryRight = getPlayWall(WALL_RIGHT).x - g_ball.img[0].width;
+        if (g_ball.position.x > boundaryRight) {
+            g_ball.position.x = boundaryRight;
+            g_ball.anchor.x = GetPaddlePositionX() - g_ball.position.x;
         }
 
         return;
     }
 
-    // move ball
-    ball.position = (Vector2){
-        ball.position.x + ball.velocity.x * GetFrameTime(),
-        ball.position.y - ball.velocity.y * GetFrameTime()
+    // Move ball
+    float deltaTime = GetFrameTime();
+    g_ball.position.x += g_ball.velocity.x * deltaTime;
+    g_ball.position.y -= g_ball.velocity.y * deltaTime;
+
+    // Check collisions
+    HandleWallCollisions(&flipX, &flipY, &stepBack);
+    HandlePaddleCollision(&flipY);
+    HandleBlockCollisions(&flipX, &flipY, &stepBack);
+
+    // Apply collision responses
+    if (stepBack) {
+        g_ball.position = g_ball.oldPosition;
+    }
+    
+    if (flipX) {
+        g_ball.velocity.x *= -1;
+    }
+    
+    if (flipY) {
+        g_ball.velocity.y *= -1;
+    }
+
+    // Add variance to angle on bounce
+    if (flipX || flipY) {
+        float angle = atan2(g_ball.velocity.y, g_ball.velocity.x);
+        float variance = ((rand() % 21) - BOUNCE_ANGLE_VARIANCE_DEG) * (PI / 180.0f);
+        angle += variance;
+        
+        g_ball.velocity.x = cos(angle) * g_ball.speed;
+        g_ball.velocity.y = sin(angle) * g_ball.speed;
+    }
+}
+
+void Ball_SetSticky(void) {
+    g_ball.sticky = true;
+}
+
+void Ball_IncreaseSpeed(void) {
+    g_ball.speed = (int)(g_ball.speed * 1.25f);
+    
+    // Update velocity to match new speed
+    float angle = atan2(g_ball.velocity.y, g_ball.velocity.x);
+    g_ball.velocity.x = cos(angle) * g_ball.speed;
+    g_ball.velocity.y = sin(angle) * g_ball.speed;
+}
+
+Rectangle Ball_GetCollisionRect(void) {
+    return (Rectangle){
+        g_ball.position.x,
+        g_ball.position.y,
+        g_ball.img[g_ball.imgIndex].width,
+        g_ball.img[g_ball.imgIndex].height
     };
+}
 
-    // check for window boundry collisions
+// =============================================================================
+// Private Helper Functions
+// =============================================================================
 
-    bool flipx = false;
-    bool flipy = false;
+static Vector2 GetBallSpawnPoint(void) {
+    Vector2 spawn = GetBallSpawnPointOnPaddle();
+    return (Vector2){
+        spawn.x - g_ball.img[g_ball.imgIndex].width / 2,
+        spawn.y - g_ball.img[g_ball.imgIndex].height
+    };
+}
 
-    if (CheckCollisionRecs(GetBallCollisionRec(), getPlayWall(WALL_BOTTOM))) {
-        ball.position.y = GetScreenHeight(); // cheesy way to hide ball after loss
-        startSound(SND_BALLLOST);  
+static void AnimateBall(void) {
+    static float elapsedTime = 0.0f;
+    
+    elapsedTime += GetFrameTime();
+    
+    if (elapsedTime > 0.1f) {
+        elapsedTime = 0.0f;
+        g_ball.imgIndex = (g_ball.imgIndex + 1) % MAX_BALL_IMG_COUNT;
+    }
+}
+
+static void DrawGuide(void) {
+    static int rotationDirection = 1;
+    
+    const float centerAngle = PI / 2.0f;
+    const float angleRange = PI / 4.0f;
+    
+    // Rotate the guide line
+    g_releaseAngle += GUIDE_ROTATION_SPEED * GetFrameTime() * rotationDirection;
+    
+    // Reverse direction at boundaries
+    if (g_releaseAngle > centerAngle + angleRange && rotationDirection == 1) {
+        rotationDirection = -1;
+    } else if (g_releaseAngle < centerAngle - angleRange && rotationDirection == -1) {
+        rotationDirection = 1;
+    }
+    
+    // Calculate guide line endpoints
+    Vector2 startPoint = {
+        g_ball.position.x + g_ball.img[0].width / 2,
+        g_ball.position.y + g_ball.img[0].height / 2
+    };
+    
+    Vector2 endPoint = {
+        startPoint.x + cos(g_releaseAngle) * GUIDE_LENGTH,
+        startPoint.y - sin(g_releaseAngle) * GUIDE_LENGTH
+    };
+    
+    DrawLineV(startPoint, endPoint, YELLOW);
+}
+
+static void HandleWallCollisions(bool *flipX, bool *flipY, bool *stepBack) {
+    Rectangle ballRect = Ball_GetCollisionRect();
+    
+    // Check bottom wall (ball lost)
+    if (CheckCollisionRecs(ballRect, getPlayWall(WALL_BOTTOM))) {
+        g_ball.position.y = GetScreenHeight(); // Hide ball
+        Audio_PlaySound(SND_BALLLOST);
         SetGameMode(MODE_LOSE);
         return;
-    } else if (CheckCollisionRecs(GetBallCollisionRec(), getPlayWall(WALL_TOP))) {
-        startSound(SND_BOING);       // test to play sound bouncing off wall
-        stepBack = true;
-        flipy = true;
     }
-
-    if (CheckCollisionRecs(GetBallCollisionRec(), getPlayWall(WALL_LEFT))) {
-        startSound(SND_BOING);                                                                                   // test to play sound bouncing off wall
-        stepBack = true;
-        flipx = true;
-    } else if (CheckCollisionRecs(GetBallCollisionRec(), getPlayWall(WALL_RIGHT))) {
-        startSound(SND_BOING);                                                                                  // test to play sound bouncing off wall
-        stepBack = true;
-        flipx = true;
+    
+    // Check top wall
+    if (CheckCollisionRecs(ballRect, getPlayWall(WALL_TOP))) {
+        Audio_PlaySound(SND_BOING);
+        *stepBack = true;
+        *flipY = true;
     }
+    
+    // Check left wall
+    if (CheckCollisionRecs(ballRect, getPlayWall(WALL_LEFT))) {
+        Audio_PlaySound(SND_BOING);
+        *stepBack = true;
+        *flipX = true;
+    }
+    
+    // Check right wall
+    if (CheckCollisionRecs(ballRect, getPlayWall(WALL_RIGHT))) {
+        Audio_PlaySound(SND_BOING);
+        *stepBack = true;
+        *flipX = true;
+    }
+}
 
-    // check for paddle collisions
-
-    if (CheckCollisionRecs(GetBallCollisionRec(),GetPaddleCollisionRec())) {
-        flipy = true;
-        ball.position.y = GetPaddlePositionY() - ball.img[ball.imgIndex].height;
-        startSound(SND_PADDLE);
-        if (ball.sticky) {
-            ball.sticky = false;
-            ball.attached = true;
-            ball.anchor = (Vector2){GetPaddlePositionX() - ball.position.x,  GetPaddlePositionY() - ball.position.y};
+static void HandlePaddleCollision(bool *flipY) {
+    Rectangle ballRect = Ball_GetCollisionRect();
+    Rectangle paddleRect = GetPaddleCollisionRec();
+    
+    if (CheckCollisionRecs(ballRect, paddleRect)) {
+        *flipY = true;
+        g_ball.position.y = GetPaddlePositionY() - g_ball.img[g_ball.imgIndex].height;
+        Audio_PlaySound(SND_PADDLE);
+        
+        if (g_ball.sticky) {
+            g_ball.sticky = false;
+            g_ball.attached = true;
+            g_ball.anchor = (Vector2){
+                GetPaddlePositionX() - g_ball.position.x,
+                GetPaddlePositionY() - g_ball.position.y
+            };
         }
     }
+}
 
-    // check for block collisions
+static void HandleBlockCollisions(bool *flipX, bool *flipY, bool *stepBack) {
+    Rectangle ballRect = Ball_GetCollisionRect();
+    
     for (int row = 0; row < getBlockRowMax(); row++) {
         for (int col = 0; col < getBlockColMax(); col++) {
-            if (!isBlockActive(row,col)) continue;
+            if (!isBlockActive(row, col)) {
+                continue;
+            }
 
-            Rectangle block = getBlockCollisionRec(row, col);
-            if (CheckCollisionRecs(GetBallCollisionRec(), block)) {
-
-                stepBack = true;
+            Rectangle blockRect = getBlockCollisionRec(row, col);
+            
+            if (CheckCollisionRecs(ballRect, blockRect)) {
+                *stepBack = true;
                 activateBlock(row, col);
 
-                float dX = (ball.position.x + ball.img->width / 2) - (block.x + block.width / 2);
-                float dY = (ball.position.y + ball.img->height / 2) - (block.y + block.height / 2);
+                // Calculate collision side
+                float ballCenterX = g_ball.position.x + g_ball.img[0].width / 2;
+                float ballCenterY = g_ball.position.y + g_ball.img[0].height / 2;
+                float blockCenterX = blockRect.x + blockRect.width / 2;
+                float blockCenterY = blockRect.y + blockRect.height / 2;
 
-                float overlapX = (ball.img->width + block.width) / 2 - fabs(dX);
-                float overlapY = (ball.img->height + block.height) / 2 - fabs(dY);
+                float deltaX = ballCenterX - blockCenterX;
+                float deltaY = ballCenterY - blockCenterY;
 
+                float overlapX = (g_ball.img[0].width + blockRect.width) / 2 - fabs(deltaX);
+                float overlapY = (g_ball.img[0].height + blockRect.height) / 2 - fabs(deltaY);
+
+                // Determine bounce direction based on smallest overlap
                 if (overlapX < overlapY) {
-                    flipx = true;
+                    *flipX = true;
                 } else {
-                    flipy = true;
+                    *flipY = true;
                 }
-
+                
+                return; // Only handle one block collision per frame
             }
         }
     }
-
-    // change directions if needed
-    if (stepBack) ball.position = ball.oldPosition;
-    if (flipx) ball.velocity.x *= -1;
-    if (flipy) ball.velocity.y *= -1;
-
-    // add variance to the angle on bounce
-    if (flipx || flipy) {
-
-        float angle = atan2(ball.velocity.y, ball.velocity.x) + ((rand() % 11) - bouncVariance) * (PI / 180.0f);
-        ball.velocity.x = cos(angle) * ball.speed;
-        ball.velocity.y = sin(angle) * ball.speed;
-
-    }
-
-}
-
-
-Rectangle GetBallCollisionRec() {
-    return (Rectangle) {ball.position.x, ball.position.y, ball.img[ball.imgIndex].width, ball.img[ball.imgIndex].height};
-}
-
-
-void SetBallSticky(void) {
-    ball.sticky = true;
-}
-
-
-void IncreaseBallSpeed(void) {
-    ball.speed *= 1.25;
 }

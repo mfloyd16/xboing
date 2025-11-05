@@ -1,290 +1,291 @@
-#include <stdbool.h>
-#include <raylib.h>
+/**
+ * @file demo_gamemodes.c
+ * @brief Game mode state machine implementation for XBoing
+ * 
+ * Manages game state transitions, life tracking, and level progression.
+ */
 
 #include "demo_gamemodes.h"
+#include "core/constants.h"
+#include "core/types.h"
 #include "paddle.h"
 #include "demo_controls.h"
 #include "demo_blockloader.h"
 #include "demo_ball.h"
+#include "audio.h"
+#include <raylib.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <math.h>
-const int INITIAL_LIVES = 3;
-int livesRemaining = 0;
 
-GAME_MODES gameState = MODE_EXIT;
+// =============================================================================
+// Global State
+// =============================================================================
+static GameMode g_currentMode = MODE_EXIT;
+static int g_livesRemaining = 0;
+static char g_currentLevelFile[512] = {0};
 
-// track the current level file so we can advance to the next level after a win
-static char currentLevelFile[512] = {0};
+// =============================================================================
+// Forward Declarations
+// =============================================================================
+static void RenderGameScreen(void);
+static void DrawStatusText(const char *text);
+static bool TryLoadNextLevel(void);
 
-void RenderGameScreen(void);
-void DrawStatusText(const char *displayText);
+// =============================================================================
+// State Machine Functions
+// =============================================================================
 
-GAME_MODES GetGameMode(void)
-{
-    return gameState;
+GameMode GameMode_GetCurrent(void) {
+    return g_currentMode;
 }
 
-void SetGameMode(GAME_MODES mode)
-{
-    gameState = mode;
+void GameMode_SetCurrent(GameMode mode) {
+    g_currentMode = mode;
 }
 
-void RunInitGameMode(const char *fileName)
-{
+// =============================================================================
+// Mode Update Functions
+// =============================================================================
 
-    // Always load blocks when starting a new level file, or when out of lives
-    if (livesRemaining <= 0 || (fileName && currentLevelFile[0] != '\0' && strcmp(fileName, currentLevelFile) != 0) || (fileName && currentLevelFile[0] == '\0'))
-    {
-        // strcmp(fileName, currentLevelFile) != 0 checks whether the requested
-        // level filename differs from the one currently loaded. If different,
-        // we must reload block data for the new level.
-        loadBlocks(fileName);
-        // remember which level file was loaded
-        if (fileName) {
-            // Use strncpy to avoid buffer overflow when copying the filename into
-            // our fixed-size `currentLevelFile` buffer. We copy at most
-            // sizeof(currentLevelFile)-1 bytes and then explicitly NUL-terminate.
-            strncpy(currentLevelFile, fileName, sizeof(currentLevelFile) - 1);
-            currentLevelFile[sizeof(currentLevelFile) - 1] = '\0';
+void GameMode_RunInit(const char *levelFile) {
+    // Determine if we need to reload level data
+    bool needsReload = (g_livesRemaining <= 0) ||
+                       (levelFile && g_currentLevelFile[0] != '\0' && strcmp(levelFile, g_currentLevelFile) != 0) ||
+                       (levelFile && g_currentLevelFile[0] == '\0');
+
+    if (needsReload) {
+        Blocks_LoadLevel(levelFile);
+        
+        if (levelFile) {
+            strncpy(g_currentLevelFile, levelFile, sizeof(g_currentLevelFile) - 1);
+            g_currentLevelFile[sizeof(g_currentLevelFile) - 1] = '\0';
         }
-        livesRemaining = INITIAL_LIVES;
+        
+        g_livesRemaining = INITIAL_LIVES;
     }
 
-    livesRemaining--;
-
-    ResetPaddleStart();
-    ResetBall();
-
+    g_livesRemaining--;
+    
+    Paddle_Reset();
+    Ball_Reset();
+    
     RenderGameScreen();
-
-    SetGameMode(MODE_PLAY);
+    
+    GameMode_SetCurrent(MODE_PLAY);
 }
 
-void RunPlayMode(void)
-{
-    // --- Keyboard controls ---
-    if (IsInputPaddleLeft())
-        MovePaddle(PADDLE_LEFT);
-    if (IsInputPaddleRight())
-        MovePaddle(PADDLE_RIGHT);
+void GameMode_RunPlay(void) {
+    // Handle keyboard controls
+    if (IsInputPaddleLeft()) {
+        Paddle_Move(PADDLE_LEFT);
+    }
+    if (IsInputPaddleRight()) {
+        Paddle_Move(PADDLE_RIGHT);
+    }
 
-    // --- Mouse controls ---
-    Vector2 mousePosition = GetMousePosition();
-    SetPaddlePosition(mousePosition.x);
+    // Handle mouse controls
+    Vector2 mousePos = GetMousePosition();
+    Paddle_SetPosition(mousePos.x);
 
-    // --- Ball release ---
-    if (IsInputReleaseBall())
-        ReleaseBall();
+    // Handle ball release
+    if (IsInputReleaseBall()) {
+        Ball_Release();
+    }
 
-    // --- Update ball ---
-    MoveBall();
+    // Update game objects
+    Ball_Update();
 
-    // --- Render everything ---
+    // Render everything
     RenderGameScreen();
 
-    // --- Quit handling ---
-    if (IsInputQuitGame())
-    {
-        livesRemaining = 0;
-        SetGameMode(MODE_CANCEL);
+    // Handle quit
+    if (IsInputQuitGame()) {
+        g_livesRemaining = 0;
+        GameMode_SetCurrent(MODE_CANCEL);
     }
 }
 
-void RunEndMode(void)
-{
-
+void GameMode_RunEnd(void) {
     RenderGameScreen();
 
-    // If user requested quit, exit
-    if (IsInputQuitGame())
-    {
-        SetGameMode(MODE_EXIT);
+    // Handle quit request
+    if (IsInputQuitGame()) {
+        GameMode_SetCurrent(MODE_EXIT);
         return;
     }
 
-    // If at WIN screen, allow advancing to the next numeric level using Enter/Space
-    if (GetGameMode() == MODE_WIN)
-    {
-        // Check for Enter/Space input
-        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_SPACE))
-        {
-            // Try to construct next level filename by finding a numeric sequence in the current file
-            if (currentLevelFile[0] != '\0')
-            {
-                // find the last sequence of digits in the filename
-                const char *p = currentLevelFile + strlen(currentLevelFile) - 1;
-                while (p >= currentLevelFile && !isdigit((unsigned char)*p)) p--;
-                if (p >= currentLevelFile)
-                {
-                    // find start of digit sequence
-                    const char *end = p;
-                    const char *start = end;
-                    while (start > currentLevelFile && isdigit((unsigned char)*(start-1))) start--;
-
-                    int len = (int)(end - start) + 1;
-                    char numberBuf[32] = {0};
-                    // Copy the digit substring (len characters) into numberBuf and
-                    // then NUL-terminate. strncpy could be used here but we copy
-                    // the exact known length and add the terminator explicitly.
-                    strncpy(numberBuf, start, len);
-                    numberBuf[len] = '\0';
-
-                    int num = atoi(numberBuf);
-                    int width = len; // preserve zero padding width
-                    int next = num + 1;
-
-                    // build next filename
-                    char nextFile[512] = {0};
-                    // copy prefix up to start
-                    int prefixLen = (int)(start - currentLevelFile);
-                    // Copy the filename prefix (everything before the numeric
-                    // sequence) into nextFile. We copy only prefixLen bytes so the
-                    // buffer cannot overflow; the rest will be appended afterwards.
-                    if (prefixLen > 0) strncpy(nextFile, currentLevelFile, prefixLen);
-                    // append incremented number with preserved width
-                    // Build a format string (e.g. "%02d") into `fmt` while
-                    // preventing buffer overflow. snprintf bounds the write.
-                    char fmt[16];
-                    snprintf(fmt, sizeof(fmt), "%%0%dd", width);
-                    // Format the incremented numeric part into numStr using the
-                    // generated format. We use snprintf to ensure the output is
-                    // NUL-terminated and cannot overflow numStr.
-                    char numStr[32];
-                    snprintf(numStr, sizeof(numStr), fmt, next);
-                    // Append the numeric string into nextFile safely. Use
-                    // strncat with the remaining buffer space to avoid overflow.
-                    strncat(nextFile, numStr, sizeof(nextFile) - strlen(nextFile) - 1);
-                    // append the rest of filename after the number
-                    const char *rest = end + 1;
-                    // Append any suffix (like ".data") using strncat and the
-                    // remaining buffer space to avoid overflowing nextFile.
-                    if (*rest) strncat(nextFile, rest, sizeof(nextFile) - strlen(nextFile) - 1);
-
-                    // check that file exists
-                    FILE *f = fopen(nextFile, "r");
-                    if (f)
-                    {
-                        fclose(f);
-                        // force reload of blocks by resetting livesRemaining so RunInitGameMode will load
-                        livesRemaining = 0;
-                        // load next level
-                        RunInitGameMode(nextFile);
-                        return;
-                    }
-                }
+    // Handle win screen - allow advancing to next level
+    if (GameMode_GetCurrent() == MODE_WIN) {
+        if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER) || IsKeyPressed(KEY_SPACE)) {
+            if (TryLoadNextLevel()) {
+                return;  // Successfully advanced
             }
-
-            // If we couldn't determine/locate a next level, fall back to restart current or exit
-            SetGameMode(MODE_EXIT);
+            // No next level found, exit
+            GameMode_SetCurrent(MODE_EXIT);
             return;
         }
     }
 
-    // For lose/cancel or other end screens allow restart (replay same level)
-    if (IsInputRestartAfterEnd())
-    {
-        // On restart, reload the same level file if we have one
-        if (currentLevelFile[0] != '\0')
-        {
-            RunInitGameMode(currentLevelFile);
-        }
-        else
-        {
-            SetGameMode(MODE_INITGAME);
+    // Handle lose/cancel screens - allow restart
+    if (IsInputRestartAfterEnd()) {
+        if (g_currentLevelFile[0] != '\0') {
+            GameMode_RunInit(g_currentLevelFile);
+        } else {
+            GameMode_SetCurrent(MODE_INITGAME);
         }
     }
 }
 
-void RenderGameScreen(void)
-{
+// =============================================================================
+// Private Helper Functions
+// =============================================================================
 
-    BeginDrawing();
-
-    ClearBackground(BLACK);
-
-    drawWalls();
-    drawBlocks();
-    DrawBall();
-    DrawPaddle();
-    drawBorder();
-
-    switch (GetGameMode())
-    {
-
-    case MODE_WIN:
-        DrawStatusText("You Won! Congrats!!!");
-                // Show flashing prompt to advance when on the win screen
-                {
-                    const char *prompt = "Press SPACE or ENTER to Move On";
-                    const int PROMPT_SIZE = 20;
-                    int px = (GetScreenWidth() - MeasureText(prompt, PROMPT_SIZE)) / 2;
-                    int py = (GetScreenHeight() / 3) + 80; // below the main status text
-                          double t = GetTime();
-                          /* Smooth pulsing: use a sine wave to compute alpha in [0,1].
-                              Use the numeric constant 2*PI directly to avoid introducing
-                              an extra identifier (keeps code C89-friendly). */
-                          double alpha = 0.5 * (1.0 + sin(6.283185307179586 * t)); /* 2*PI */
-                          if (alpha < 0.0) alpha = 0.0;
-                          if (alpha > 1.0) alpha = 1.0;
-                          unsigned char a = (unsigned char)(alpha * 255.0);
-                          /* Fill Color explicitly to avoid compound-literal syntax that
-                              may be unsupported in some C dialects. */
-                          Color textColor;
-                        // light green color for the prompt (RGB: 144,238,144)
-                        textColor.r = 144; textColor.g = 238; textColor.b = 144; textColor.a = a;
-                          DrawText(prompt, px, py, PROMPT_SIZE, textColor);
-                }
-        break;
-
-    case MODE_LOSE:
-        if (livesRemaining > 0)
-        {
-            const char *txt = TextFormat("Remaining attempts: %d", livesRemaining);
-            DrawStatusText(txt);
-        }
-        else
-        {
-            DrawStatusText("You Lost! Sadface...");
-        }
-        break;
-
-    case MODE_CANCEL:
-        DrawStatusText("Game canceled");
-
-    default:
-        break;
+static bool TryLoadNextLevel(void) {
+    if (g_currentLevelFile[0] == '\0') {
+        return false;
     }
 
-    const char *lives = TextFormat("Balls Remaining: %d", livesRemaining);
+    // Find the last numeric sequence in the filename
+    const char *p = g_currentLevelFile + strlen(g_currentLevelFile) - 1;
+    while (p >= g_currentLevelFile && !isdigit((unsigned char)*p)) {
+        p--;
+    }
+    
+    if (p < g_currentLevelFile) {
+        return false;  // No numeric sequence found
+    }
+
+    // Find start of digit sequence
+    const char *end = p;
+    const char *start = end;
+    while (start > g_currentLevelFile && isdigit((unsigned char)*(start - 1))) {
+        start--;
+    }
+
+    // Extract and increment the number
+    int len = (int)(end - start) + 1;
+    char numberBuf[32] = {0};
+    strncpy(numberBuf, start, len);
+    numberBuf[len] = '\0';
+
+    int currentNum = atoi(numberBuf);
+    int nextNum = currentNum + 1;
+
+    // Build next filename with zero-padding preserved
+    char nextFile[512] = {0};
+    int prefixLen = (int)(start - g_currentLevelFile);
+    
+    if (prefixLen > 0) {
+        strncpy(nextFile, g_currentLevelFile, prefixLen);
+    }
+
+    char fmt[16];
+    snprintf(fmt, sizeof(fmt), "%%0%dd", len);
+    
+    char numStr[32];
+    snprintf(numStr, sizeof(numStr), fmt, nextNum);
+    strncat(nextFile, numStr, sizeof(nextFile) - strlen(nextFile) - 1);
+
+    const char *rest = end + 1;
+    if (*rest) {
+        strncat(nextFile, rest, sizeof(nextFile) - strlen(nextFile) - 1);
+    }
+
+    // Check if next level exists
+    FILE *f = fopen(nextFile, "r");
+    if (f) {
+        fclose(f);
+        g_livesRemaining = 0;  // Force reload
+        GameMode_RunInit(nextFile);
+        return true;
+    }
+
+    return false;
+}
+
+static void RenderGameScreen(void) {
+    BeginDrawing();
+    ClearBackground(BLACK);
+
+    // Draw game objects
+    Blocks_DrawWalls();
+    Blocks_Draw();
+    Ball_Draw();
+    Paddle_Draw();
+    Blocks_DrawBorder();
+
+    // Draw game mode specific overlays
+    GameMode currentMode = GameMode_GetCurrent();
+    
+    switch (currentMode) {
+        case MODE_WIN: {
+            DrawStatusText("You Won! Congrats!!!");
+            
+            // Flashing prompt to advance
+            const char *prompt = "Press SPACE or ENTER to Move On";
+            const int PROMPT_SIZE = 20;
+            int px = (SCREEN_WIDTH - MeasureText(prompt, PROMPT_SIZE)) / 2;
+            int py = (SCREEN_HEIGHT / 3) + 80;
+            
+            double t = GetTime();
+            double alpha = 0.5 * (1.0 + sin(6.283185307179586 * t));  // 2*PI
+            if (alpha < 0.0) alpha = 0.0;
+            if (alpha > 1.0) alpha = 1.0;
+            
+            Color textColor = {144, 238, 144, (unsigned char)(alpha * 255.0)};
+            DrawText(prompt, px, py, PROMPT_SIZE, textColor);
+            break;
+        }
+            
+        case MODE_LOSE:
+            if (g_livesRemaining > 0) {
+                const char *txt = TextFormat("Remaining attempts: %d", g_livesRemaining);
+                DrawStatusText(txt);
+            } else {
+                DrawStatusText("You Lost! Sadface...");
+            }
+            break;
+            
+        case MODE_CANCEL:
+            DrawStatusText("Game canceled");
+            break;
+            
+        default:
+            break;
+    }
+
+    // Draw HUD
+    const char *lives = TextFormat("Balls Remaining: %d", g_livesRemaining);
     DrawText(lives, 10, 10, 20, WHITE);
 
-    const char *blocks = TextFormat("Blocks Remaining: %d", getBlockCount());
-    DrawText(blocks, GetScreenWidth() - MeasureText(blocks, 20) - 10, 10, 20, WHITE);
+    const char *blocks = TextFormat("Blocks Remaining: %d", Blocks_GetRemainingCount());
+    DrawText(blocks, SCREEN_WIDTH - MeasureText(blocks, 20) - 10, 10, 20, WHITE);
 
-    if (GetPaddleReverse())
-    {
+    if (Paddle_IsReversed()) {
         const char *reversed = "REVERSED!";
-        DrawText(reversed, (GetScreenWidth() - MeasureText(reversed, 25)) / 2, 35, 25, YELLOW);
+        DrawText(reversed, 
+                (SCREEN_WIDTH - MeasureText(reversed, 25)) / 2, 
+                35, 25, YELLOW);
     }
 
     EndDrawing();
 }
 
-void DrawStatusText(const char *displayText)
-{
-
+static void DrawStatusText(const char *text) {
     const int FONTSIZE = 40;
     const int PADDING = 20;
 
-    const int width = MeasureText(displayText, FONTSIZE);
-    const int xpos = (GetScreenWidth() - width) / 2;
-    const int ypos = GetScreenHeight() / 3;
+    const int width = MeasureText(text, FONTSIZE);
+    const int xpos = (SCREEN_WIDTH - width) / 2;
+    const int ypos = SCREEN_HEIGHT / 3;
 
-    DrawRectangle(xpos - PADDING, ypos - PADDING, width + 2 * PADDING, FONTSIZE + 2 * PADDING, BLACK);
+    DrawRectangle(xpos - PADDING, ypos - PADDING, 
+                  width + 2 * PADDING, FONTSIZE + 2 * PADDING, 
+                  BLACK);
 
-    DrawText(displayText, xpos - 1, ypos - 1, FONTSIZE, RED);
-    DrawText(displayText, xpos, ypos, FONTSIZE, GREEN);
+    DrawText(text, xpos - 1, ypos - 1, FONTSIZE, RED);
+    DrawText(text, xpos, ypos, FONTSIZE, GREEN);
 }

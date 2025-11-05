@@ -1,15 +1,23 @@
 /**
  * @file audio.c
- * @brief Stub implementations for audio functions of XBoing
+ * @brief Audio system implementation for XBoing
+ * 
+ * Manages loading, playing, and cleanup of all game sound effects.
  */
-#include <raylib.h>
-#include <stdlib.h>
-#include <stdio.h>
+
 #include "audio.h"
+#include <raylib.h>
+#include <stdio.h>
 
-AudioSystem audio;
+// =============================================================================
+// Global State
+// =============================================================================
+AudioSystem g_audioSystem = {0};
 
-static const char *soundFiles[SOUND_COUNT] = {
+// =============================================================================
+// Sound File Paths
+// =============================================================================
+static const char *s_soundFiles[SOUND_COUNT] = {
     "resource/sounds/ammo.mp3", // when ammo block is destroyed
     "resource/sounds/applause.mp3",
     "resource/sounds/ball2ball.mp3", // when ball hits the paddle
@@ -58,42 +66,67 @@ static const char *soundFiles[SOUND_COUNT] = {
     "resource/sounds/youagod.mp3"
 };
 
+// =============================================================================
+// Public Functions
+// =============================================================================
 
-bool initAudioFiles(void) {
+bool Audio_Initialize(void) {
     bool success = true;
+    
     for (int i = 0; i < SOUND_COUNT; i++) {
-        if (!FileExists(soundFiles[i])) {
-            fprintf(stderr, "Missing sound: %s\n", soundFiles[i]);
+        if (!FileExists(s_soundFiles[i])) {
+            fprintf(stderr, "[Audio] Missing sound file: %s\n", s_soundFiles[i]);
             success = false;
             continue;
         }
 
-        audio.sounds[i] = LoadSound(soundFiles[i]);
-        if (audio.sounds[i].frameCount == 0) {
-            fprintf(stderr, "Failed to load sound: %s\n", soundFiles[i]);
+        g_audioSystem.sounds[i] = LoadSound(s_soundFiles[i]);
+        
+        if (g_audioSystem.sounds[i].frameCount == 0) {
+            fprintf(stderr, "[Audio] Failed to load sound: %s\n", s_soundFiles[i]);
             success = false;
-        } else {
-            //fprintf(stderr, "Loaded: %s\n", soundFiles[i]);
         }
     }
 
-    audio.masterVolume = 100.0f;
+    g_audioSystem.masterVolume = 1.0f;
+    
+    if (success) {
+        fprintf(stdout, "[Audio] Successfully loaded %d sound effects\n", SOUND_COUNT);
+    }
+    
     return success;
 }
 
-void FreeAudioSystem(void) {
+void Audio_Shutdown(void) {
+    int unloadedCount = 0;
+    
     for (int i = 0; i < SOUND_COUNT; i++) {
-        if (audio.sounds[i].frameCount > 0) {
-            UnloadSound(audio.sounds[i]);
-            audio.sounds[i].frameCount = 0;
+        if (g_audioSystem.sounds[i].frameCount > 0) {
+            UnloadSound(g_audioSystem.sounds[i]);
+            g_audioSystem.sounds[i].frameCount = 0;
+            unloadedCount++;
         }
     }
-    fprintf(stderr, "All sounds unloaded.\n");
+    
+    fprintf(stdout, "[Audio] Unloaded %d sound effects\n", unloadedCount);
 }
 
-/* Play a sound file */
-void startSound(SoundID id) {
-    if (id >= 0 && id < SOUND_COUNT && audio.sounds[id].frameCount > 0) {
-        PlaySound(audio.sounds[id]);
+void Audio_PlaySound(SoundID soundId) {
+    if (soundId >= 0 && soundId < SOUND_COUNT) {
+        if (g_audioSystem.sounds[soundId].frameCount > 0) {
+            PlaySound(g_audioSystem.sounds[soundId]);
+        } else {
+            fprintf(stderr, "[Audio] Attempted to play invalid sound ID: %d\n", soundId);
+        }
     }
+}
+
+void Audio_SetMasterVolume(float volume) {
+    if (volume < 0.0f) volume = 0.0f;
+    if (volume > 1.0f) volume = 1.0f;
+    g_audioSystem.masterVolume = volume;
+}
+
+float Audio_GetMasterVolume(void) {
+    return g_audioSystem.masterVolume;
 }

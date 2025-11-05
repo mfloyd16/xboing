@@ -1,270 +1,207 @@
-/*
- * XBoing - An X11 blockout style computer game
- *
- * (c) Copyright 1993, 1994, 1995, Justin C. Kibell, All Rights Reserved
- *
- * The X Consortium, and any party obtaining a copy of these files from
- * the X Consortium, directly or indirectly, is granted, free of charge, a
- * full and unrestricted irrevocable, world-wide, paid up, royalty-free,
- * nonexclusive right and license to deal in this software and
- * documentation files (the "Software"), including without limitation the
- * rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons who receive
- * copies from any such party to do so.  This license includes without
- * limitation a license to do the foregoing actions under any patents of
- * the party supplying this software to the X Consortium.
- *
- * In no event shall the author be liable to any party for direct, indirect,
- * special, incidental, or consequential damages arising out of the use of
- * this software and its documentation, even if the author has been advised
- * of the possibility of such damage.
- *
- * The author specifically disclaims any warranties, including, but not limited
- * to, the implied warranties of merchantability and fitness for a particular
- * purpose.  The software provided hereunder is on an "AS IS" basis, and the
- * author has no obligation to provide maintenance, support, updates,
- * enhancements, or modifications.
+/**
+ * @file paddle.c
+ * @brief Paddle system implementation for XBoing
+ * 
+ * Manages paddle state, movement, size changes, and reverse controls.
  */
 
-/*
- * =========================================================================
- *
- * $Id: paddle.c,v 1.1.1.1 1994/12/16 01:36:45 jck Exp $
- * $Source: /usr5/legends/jck/xb/master/xboing/paddle.c,v $
- * $Revision: 1.1.1.1 $
- * $Date: 1994/12/16 01:36:45 $
- *
- * $Log: paddle.c,v $
- * Revision 1.1.1.1  1994/12/16  01:36:45  jck
- * The XBoing distribution requires configuration management. This is why the
- * cvs utility is being used. This is the initial import of all source etc..
- *
- *
- * =========================================================================
- */
-
-/*
- *  Include file dependencies:
- */
-
-#include <stdio.h>
-#include <raylib.h>
-#include "faketypes.h"
 #include "paddle.h"
 #include "demo_blockloader.h"
+#include "core/constants.h"
+#include "core/types.h"
 #include <stdio.h>
+#include <raylib.h>
 
-#define PADDLE_COUNT 3
+// =============================================================================
+// Global State
+// =============================================================================
+static Paddle g_paddles[PADDLE_COUNT];
+static int g_currentPaddleIndex = PADDLE_INITIAL_INDEX;
+static int g_paddlePosition = 0;
+static bool g_reverseMode = false;
 
-#define PADDLE_TEXTURES "resource/textures/paddle/"
+// =============================================================================
+// Public Functions - Initialization
+// =============================================================================
 
-const int PADDLE_INITIAL_INDEX = 1;
-const int PADDLE_VEL = 600; // pixels per second
+bool Paddle_Initialize(void) {
+    if (WindowShouldClose()) {
+        return false;
+    }
 
-typedef struct
-{
-	Texture2D img;
-	char *description;
-	int size;
-	char *filepath;
-} Paddle;
+    // Define paddle configurations (must load smallest to largest)
+    const char *paddleFiles[PADDLE_COUNT] = {
+        PATH_PADDLE_TEXTURES "padsml.png",
+        PATH_PADDLE_TEXTURES "padmed.png",
+        PATH_PADDLE_TEXTURES "padhuge.png"
+    };
+    
+    const char *paddleDescs[PADDLE_COUNT] = {
+        "Small",
+        "Medium", 
+        "Huge"
+    };
+    
+    const int paddleSizes[PADDLE_COUNT] = {40, 50, 70};
 
-Paddle paddles[PADDLE_COUNT];
+    // Load paddle textures
+    bool success = true;
+    for (int i = 0; i < PADDLE_COUNT; i++) {
+        g_paddles[i].filepath = paddleFiles[i];
+        g_paddles[i].description = paddleDescs[i];
+        g_paddles[i].size = paddleSizes[i];
+        
+        Image img = LoadImage(g_paddles[i].filepath);
+        g_paddles[i].img = LoadTextureFromImage(img);
+        UnloadImage(img);
 
-int reverseOn;
-int paddleIndex;
-int paddlePosition;
+        if (g_paddles[i].img.id == 0) {
+            fprintf(stderr, "[Paddle] Failed to load texture: %s\n", g_paddles[i].filepath);
+            success = false;
+        }
+    }
 
-int GetPaddlePositionY(void);
-
-void DrawPaddle(void)
-{
-	DrawTexture(paddles[paddleIndex].img, paddlePosition, GetPaddlePositionY(), WHITE);
+    if (success) {
+        fprintf(stdout, "[Paddle] Successfully loaded %d paddle textures\n", PADDLE_COUNT);
+    }
+    
+    return success;
 }
 
-int GetPaddlePositionY(void)
-{
-	// return GetScreenHeight() - DIST_BASE;
-	return getPlayWall(WALL_BOTTOM).y - DIST_BASE;
+void Paddle_Shutdown(void) {
+    for (int i = 0; i < PADDLE_COUNT; i++) {
+        UnloadTexture(g_paddles[i].img);
+    }
+    fprintf(stdout, "[Paddle] Resources freed\n");
 }
 
-bool InitialisePaddle(void)
-{
-
-	// do not load images if program is closing
-	if (WindowShouldClose())
-		return false;
-
-	Texture2D emptyTexture = {0};
-
-	// textures must be loaded from smallest to largest
-	paddles[0] = (Paddle){emptyTexture, "Small", 40, PADDLE_TEXTURES "padsml.png"};
-	paddles[1] = (Paddle){emptyTexture, "Medium", 50, PADDLE_TEXTURES "padmed.png"};
-	paddles[2] = (Paddle){emptyTexture, "Huge", 70, PADDLE_TEXTURES "padhuge.png"};
-
-	// initialize variables before loop
-	int errorFlag = False;
-
-	// create textures for each paddle size
-	for (int i = 0; i < PADDLE_COUNT; i++)
-	{
-
-		// load paddle texture
-		Image img = LoadImage(paddles[i].filepath);
-		paddles[i].img = LoadTextureFromImage(img);
-
-		// check if texture loaded successfully
-		if (paddles[i].img.id == 0)
-		{
-			fprintf(stderr, "Error: failed to load texture InitialisePaddle() file: %s.\n", paddles[i].filepath);
-			errorFlag = True;
-		}
-
-		UnloadImage(img);
-	}
-
-	// stop program if textures failed to load
-	return !errorFlag;
+void Paddle_Reset(void) {
+    g_currentPaddleIndex = PADDLE_INITIAL_INDEX;
+    g_paddlePosition = (SCREEN_WIDTH - g_paddles[g_currentPaddleIndex].size) / 2;
+    g_reverseMode = false;
 }
 
-void SetReverseOff(void)
-{
-	reverseOn = False;
+// =============================================================================
+// Public Functions - Rendering
+// =============================================================================
+
+void Paddle_Draw(void) {
+    DrawTexture(g_paddles[g_currentPaddleIndex].img,
+                g_paddlePosition,
+                Paddle_GetPositionY(),
+                WHITE);
 }
 
-void ToggleReverse(void)
-{
+// =============================================================================
+// Public Functions - Movement
+// =============================================================================
 
-	reverseOn = (reverseOn == True) ? False : True;
+void Paddle_Move(PaddleDirection direction) {
+    if (direction == PADDLE_NONE) {
+        // Just clamp to boundaries
+        int minX = Blocks_GetWall(WALL_LEFT).width;
+        int maxX = Blocks_GetWall(WALL_RIGHT).x - g_paddles[g_currentPaddleIndex].size;
+        
+        if (g_paddlePosition < minX) g_paddlePosition = minX;
+        if (g_paddlePosition > maxX) g_paddlePosition = maxX;
+        return;
+    }
 
-	// TODO: add display text when implemented
-	// DrawSpecials(display);
+    // Calculate movement with reverse mode consideration
+    int distance = PADDLE_VELOCITY * GetFrameTime();
+    if (g_reverseMode) distance = -distance;
+
+    // Apply movement
+    if (direction == PADDLE_LEFT) {
+        g_paddlePosition -= distance;
+    } else if (direction == PADDLE_RIGHT) {
+        g_paddlePosition += distance;
+    }
+
+    // Clamp to boundaries
+    int minX = Blocks_GetWall(WALL_LEFT).width;
+    int maxX = Blocks_GetWall(WALL_RIGHT).x - g_paddles[g_currentPaddleIndex].size;
+    
+    if (g_paddlePosition < minX) g_paddlePosition = minX;
+    if (g_paddlePosition > maxX) g_paddlePosition = maxX;
 }
 
-void FreePaddle(void)
-{
-	for (int i = 0; i < PADDLE_COUNT; i++)
-	{
-		UnloadTexture(paddles[i].img);
-	}
+void Paddle_SetPosition(float x) {
+    int minX = Blocks_GetWall(WALL_LEFT).width;
+    int maxX = Blocks_GetWall(WALL_RIGHT).x - g_paddles[g_currentPaddleIndex].size;
+
+    if (x < minX) x = minX;
+    if (x > maxX) x = maxX;
+
+    g_paddlePosition = (int)x;
 }
 
-void MovePaddle(int direction)
-{
+// =============================================================================
+// Public Functions - State Queries
+// =============================================================================
 
-	// calculate the movement distance, adjusted for reverse flag
-	int distance = PADDLE_VEL * (reverseOn == True ? -1 : 1) * GetFrameTime();
-
-	// apply the move based on direction
-	switch (direction)
-	{
-	case PADDLE_LEFT:
-		paddlePosition -= distance;
-		break;
-	case PADDLE_RIGHT:
-		paddlePosition += distance;
-		break;
-	}
-
-	// keep position within window boundries
-	int x = getPlayWall(WALL_LEFT).width;
-	if (paddlePosition < x)
-		paddlePosition = x;
-
-	int maxHPosition = getPlayWall(WALL_RIGHT).x - paddles[paddleIndex].size;
-	if (paddlePosition > maxHPosition)
-		paddlePosition = maxHPosition;
+int Paddle_GetWidth(void) {
+    return g_paddles[g_currentPaddleIndex].size;
 }
 
-int GetPaddleSize(void)
-{
-	return paddles[paddleIndex].size;
+int Paddle_GetPositionX(void) {
+    return g_paddlePosition;
 }
 
-int GetPaddlePositionX(void)
-{
-	return paddlePosition;
+int Paddle_GetPositionY(void) {
+    return Blocks_GetWall(WALL_BOTTOM).y - PADDLE_DIST_BASE;
 }
 
-Rectangle GetPaddleCollisionRec(void)
-{
-	return (Rectangle){
-		paddlePosition,
-		GetPaddlePositionY(),
-		paddles[paddleIndex].img.width,
-		paddles[paddleIndex].img.height};
+Rectangle Paddle_GetCollisionRect(void) {
+    return (Rectangle){
+        g_paddlePosition,
+        Paddle_GetPositionY(),
+        g_paddles[g_currentPaddleIndex].img.width,
+        g_paddles[g_currentPaddleIndex].img.height
+    };
 }
 
-int GetPaddleReverse(void)
-{
-	return reverseOn;
+Vector2 Paddle_GetBallSpawnPoint(void) {
+    return (Vector2){
+        g_paddlePosition + g_paddles[g_currentPaddleIndex].size / 2,
+        Paddle_GetPositionY()
+    };
 }
 
-char *GetPaddleDescription(void)
-{
-	return paddles[paddleIndex].description;
+bool Paddle_IsReversed(void) {
+    return g_reverseMode;
 }
 
-void ResetPaddleStart(void)
-{
-
-	// set size and center paddle
-	paddleIndex = PADDLE_INITIAL_INDEX;
-	paddlePosition = (GetScreenWidth() - paddles[paddleIndex].size) / 2;
-	reverseOn = False;
+const char *Paddle_GetSizeDescription(void) {
+    return g_paddles[g_currentPaddleIndex].description;
 }
 
-void ChangePaddleSize(int changeDirection)
-{
+// =============================================================================
+// Public Functions - State Modification
+// =============================================================================
 
-	// capture the old pixel size
-	int oldSize = paddles[paddleIndex].size;
-
-	// adjust paddle index based on change in size
-	switch (changeDirection)
-	{
-	case SIZE_UP:
-		if (paddleIndex < PADDLE_COUNT - 1)
-			paddleIndex++;
-		break;
-
-	case SIZE_DOWN:
-		if (paddleIndex > 0)
-			paddleIndex--;
-		break;
-	}
-
-	// adjust position to center the change in size
-	paddlePosition -= (paddles[paddleIndex].size - oldSize) / 2;
-
-	// move to ensure resize remains inside window
-	MovePaddle(PADDLE_NONE);
+void Paddle_ToggleReverse(void) {
+    g_reverseMode = !g_reverseMode;
 }
 
-Vector2 GetBallSpawnPointOnPaddle()
-{
-	return (Vector2){
-		paddlePosition + paddles[paddleIndex].size / 2,
-		GetPaddlePositionY()};
+void Paddle_SetReverseOff(void) {
+    g_reverseMode = false;
 }
 
-Rectangle paddleRect = {200, 550, 100, 20}; // example starting position
+void Paddle_ChangeSize(SizeChange direction) {
+    int oldSize = g_paddles[g_currentPaddleIndex].size;
 
-void SetPaddlePosition(float x)
-{
-	// Clamp x to play area bounds
-	int minX = getPlayWall(WALL_LEFT).width;
-	int maxX = getPlayWall(WALL_RIGHT).x - paddles[paddleIndex].size;
+    // Change paddle index
+    if (direction == SIZE_UP && g_currentPaddleIndex < PADDLE_COUNT - 1) {
+        g_currentPaddleIndex++;
+    } else if (direction == SIZE_DOWN && g_currentPaddleIndex > 0) {
+        g_currentPaddleIndex--;
+    }
 
-	if (x < minX)
-		x = minX;
-	if (x > maxX)
-		x = maxX;
+    // Adjust position to center the size change
+    int newSize = g_paddles[g_currentPaddleIndex].size;
+    g_paddlePosition -= (newSize - oldSize) / 2;
 
-	paddlePosition = (int)x;
-}
-
-float GetPaddleWidth(void)
-{
-	return paddleRect.width;
+    // Ensure paddle stays within boundaries
+    Paddle_Move(PADDLE_NONE);
 }

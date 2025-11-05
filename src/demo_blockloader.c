@@ -1,640 +1,514 @@
-#include <stdio.h>
-#include <stdbool.h>
+/**
+ * @file demo_blockloader.c
+ * @brief Block system implementation for XBoing
+ * 
+ * Manages level loading, block textures, rendering, and collision.
+ */
 
 #include "demo_blockloader.h"
+#include "core/constants.h"
+#include "core/types.h"
 #include "demo_gamemodes.h"
 #include "demo_ball.h"
+#include "paddle.h"
 #include "audio.h"
-#define BLOCK_TEXTURES "resource/textures/blocks/"
+#include <stdio.h>
+#include <raylib.h>
 
-const int PLAY_X_OFFSET = 35;
-const int PLAY_Y_OFFSET = 60;
+// =============================================================================
+// Global State
+// =============================================================================
+static PlayArea g_playArea = {0};
+static Block g_blocks[BLOCK_ROWS_MAX][BLOCK_COLS_MAX];
+static int g_blocksRemaining = 0;
+static char g_levelName[256];
+static int g_timeBonus = 0;
 
-const int PLAY_X_PADDING = 40;
-const int PLAY_Y_PADDING = 70;
+// =============================================================================
+// Block Textures
+// =============================================================================
+static Texture2D g_texHyperspace;
+static Texture2D g_texBullet;
+static Texture2D g_texMaxAmmo;
+static Texture2D g_texRed;
+static Texture2D g_texGreen;
+static Texture2D g_texBlue;
+static Texture2D g_texTan;
+static Texture2D g_texPurple;
+static Texture2D g_texYellow;
+static Texture2D g_texBlack;
+static Texture2D g_texRoamer;
+static Texture2D g_texBomb;
+static Texture2D g_texDeath;
+static Texture2D g_texExtraBall;
+static Texture2D g_texMGun;
+static Texture2D g_texWallOff;
+static Texture2D g_texRandom;
+static Texture2D g_texDrop;
+static Texture2D g_texTimer;
+static Texture2D g_texMultiBall;
+static Texture2D g_texSticky;
+static Texture2D g_texReverse;
+static Texture2D g_texPadShrink;
+static Texture2D g_texPadExpand;
+static Texture2D g_texCounter[6];
 
-const int BLOCK_WIDTH = 40;
-const int BLOCK_HEIGHT = 20;
+// =============================================================================
+// Forward Declarations
+// =============================================================================
+static void AddBlock(int row, int col, char type);
+static void DeactivateBlock(int row, int col);
+static bool IsBlockTypeIndestructible(char type);
+static Vector2 GetPlayCorner(Corner corner);
 
-const int PADDLE_ROWS = 3;
-const int PLAY_BORDER_WIDTH = 2;
+// =============================================================================
+// Public Functions - Initialization
+// =============================================================================
 
-typedef struct {
-    int playWidth;
-    int playHeight;
-    int colWidth;
-    int rowHeight;
-} PLAY_AREA;
-
-PLAY_AREA playArea = {0};
-
-char levelName[256];
-int timeBonus = 0;
-int blocksRemaining = 0;
-
-Texture2D HYPERSPACE_BLK,
-          BULLET_BLK,
-          MAXAMMO_BLK,
-          RED_BLK,
-          GREEN_BLK,
-		  BLUE_BLK,
-          TAN_BLK,
-          PURPLE_BLK,
-          YELLOW_BLK,
-		  BLACK_BLK,
-          ROAMER_BLK,
-          BOMB_BLK,
-          DEATH_BLK,
-          EXTRABALL_BLK,
-		  MGUN_BLK,
-          WALLOFF_BLK,
-          RANDOM_BLK,
-          DROP_BLK,
-          TIMER_BLK,
-		  MULTIBALL_BLK,
-          STICKY_BLK,
-          REVERSE_BLK,
-          PAD_SHRINK_BLK,
-		  PAD_EXPAND_BLK;
-
-Texture2D COUNTER_BLK[6];
-
-const int COL_MAX = 9;
-const int ROW_MAX = 15;
-
-Block game_blocks[15][9];
-
-Vector2 getPlayCorner(CORNERS corner);
-bool isBlockTypeInteractive(char ch);
-void deactivateBlock(int row, int col);
-
-
-void initializePlayArea(void) {
-
-    playArea.playWidth = GetScreenWidth() - (PLAY_X_PADDING * 2);
-    playArea.playHeight = GetScreenHeight() - (PLAY_Y_PADDING * 2);
-
-    playArea.colWidth = playArea.playWidth / COL_MAX;
-    playArea.rowHeight = playArea.playHeight / (ROW_MAX + PADDLE_ROWS);
-
+void Blocks_InitializePlayArea(void) {
+    g_playArea.playWidth = SCREEN_WIDTH - (PLAY_X_PADDING * 2);
+    g_playArea.playHeight = SCREEN_HEIGHT - (PLAY_Y_PADDING * 2);
+    g_playArea.colWidth = g_playArea.playWidth / BLOCK_COLS_MAX;
+    g_playArea.rowHeight = g_playArea.playHeight / (BLOCK_ROWS_MAX + PADDLE_ROWS);
+    
+    fprintf(stdout, "[Blocks] Play area initialized: %dx%d\n", 
+            g_playArea.playWidth, g_playArea.playHeight);
 }
 
 
-bool loadBlocks(const char* filename) {
 
-    blocksRemaining = 0;
 
-	FILE* fp = fopen(filename, "r");
-	if(fp == NULL){
-		printf("File '%s' could not be opened.", filename);
-		return false;
-	}
+// =============================================================================
+// Public Functions - Level Loading
+// =============================================================================
 
-	// Get file data
-	fgets(levelName, 256, fp);
-	fscanf(fp, "%d", &timeBonus);
-	getc(fp);
+bool Blocks_LoadLevel(const char *filename) {
+    g_blocksRemaining = 0;
 
-	int row = 0;
-	int column = 0;
-	char ch;
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL) {
+        fprintf(stderr, "[Blocks] Failed to open level file: %s\n", filename);
+        return false;
+    }
 
-	ch = getc(fp);
-	while(ch != EOF){
+    // Read level metadata
+    fgets(g_levelName, sizeof(g_levelName), fp);
+    fscanf(fp, "%d", &g_timeBonus);
+    getc(fp); // Consume newline
 
-		if(ch != '\n'){
-			addBlock(row, column, ch);
-			column++;
-			row += column / COL_MAX;
-			column %= COL_MAX;
-		}
-		ch = getc(fp);
-	}
-	fclose(fp);
+    // Read block data
+    int row = 0;
+    int col = 0;
+    int ch;
 
+    while ((ch = getc(fp)) != EOF) {
+        if (ch != '\n') {
+            AddBlock(row, col, (char)ch);
+            col++;
+            if (col >= BLOCK_COLS_MAX) {
+                col = 0;
+                row++;
+            }
+        }
+    }
+
+    fclose(fp);
+    
+    fprintf(stdout, "[Blocks] Loaded level '%s' with %d blocks\n", 
+            g_levelName, g_blocksRemaining);
+    
     return true;
 }
 
 
-void drawBlocks(void){
+// =============================================================================
+// Public Functions - Rendering
+// =============================================================================
 
-	/* Loop through all blocks */
-    for (int row = 0; row < 15; row++){
-
-        for (int col = 0; col < 9; col++){
-
-            /* If there is a block, draw it */
-    		if(!game_blocks[row][col].active) continue;
-
-            DrawTexture(game_blocks[row][col].texture,
-                game_blocks[row][col].position.x,
-                game_blocks[row][col].position.y,
-                WHITE);
+void Blocks_Draw(void) {
+    for (int row = 0; row < BLOCK_ROWS_MAX; row++) {
+        for (int col = 0; col < BLOCK_COLS_MAX; col++) {
+            if (g_blocks[row][col].active) {
+                DrawTexture(g_blocks[row][col].texture,
+                           (int)g_blocks[row][col].position.x,
+                           (int)g_blocks[row][col].position.y,
+                           WHITE);
+            }
         }
     }
 }
 
+void Blocks_DrawBorder(void) {
+    Vector2 upperLeft = GetPlayCorner(CORNER_UPPER_LEFT);
+    Vector2 lowerRight = GetPlayCorner(CORNER_LOWER_RIGHT);
+    DrawRectangleLinesEx((Rectangle){upperLeft.x, upperLeft.y, 
+                                      lowerRight.x, lowerRight.y},
+                         PLAY_BORDER_WIDTH, RED);
+}
 
-void drawBorder(void) {
-    /* The the red gamne outline */
-    Vector2 upperLeft = getPlayCorner(UPPER_LEFT);
-    Vector2 lowerRight = getPlayCorner(LOWER_RIGHT);
-    DrawRectangleLinesEx((Rectangle){upperLeft.x, upperLeft.y, lowerRight.x, lowerRight.y},PLAY_BORDER_WIDTH, RED);
+void Blocks_DrawWalls(void) {
+    DrawRectangleRec(Blocks_GetWall(WALL_LEFT), GRAY);
+    DrawRectangleRec(Blocks_GetWall(WALL_RIGHT), GRAY);
+    DrawRectangleRec(Blocks_GetWall(WALL_TOP), GRAY);
+    DrawRectangleRec(Blocks_GetWall(WALL_BOTTOM), GRAY);
 }
 
 
-void addBlock(int row, int col, char ch){
+// =============================================================================
+// Private Helper Functions
+// =============================================================================
 
-    game_blocks[row][col].blockOffsetX	= (playArea.colWidth - BLOCK_WIDTH) / 2;
-	game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - BLOCK_HEIGHT) / 2;
-
-    game_blocks[row][col].type = ch;
-
-    switch(ch){
-
-        case 'H' :  /* hyperspace block - walls are now gone */
-            game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 31) / 2;
-			game_blocks[row][col].blockOffsetY = (playArea.rowHeight - 31) / 2;
-			game_blocks[row][col].texture = HYPERSPACE_BLK;
-		break;
-
-        case 'B' :  /* bullet block - ammo */
-			game_blocks[row][col].texture = BULLET_BLK;
-		break;
-
-        case 'c' :  /* maximum ammo bullet block  */
-            game_blocks[row][col].texture = MAXAMMO_BLK;
-        break;
-
-        case 'r' :  /* A red block */
-            game_blocks[row][col].texture = RED_BLK;
-        break;
-
-        case 'g' :  /* A green block */
-            game_blocks[row][col].texture = GREEN_BLK;
-        break;
-
-        case 'b' :  /* A blue block */
-            game_blocks[row][col].texture = BLUE_BLK;
-        break;
-
-        case 't' :  /* A tan block */
-            game_blocks[row][col].texture = TAN_BLK;
-        break;
-
-        case 'p' :  /* A purple block */
-            game_blocks[row][col].texture = PURPLE_BLK;
-        break;
-
-        case 'y' :  /* A yellow block */
-            game_blocks[row][col].texture = YELLOW_BLK;
-        break;
-
-        case 'w' :  /* A solid wall block */
-            game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 50) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 30) / 2;
-			game_blocks[row][col].texture = BLACK_BLK;
-        break;
-
-        case '0' :  /* A counter block - no number */
-            game_blocks[row][col].texture = COUNTER_BLK[0];
-        break;
-
-        case '1' :  /* A counter block level 1 */
-            game_blocks[row][col].texture = COUNTER_BLK[1];
-        break;
-
-        case '2' : /* A counter block level 2 */
-            game_blocks[row][col].texture = COUNTER_BLK[2];
-        break;
-
-        case '3' : /* A counter block level 3 */
-            game_blocks[row][col].texture = COUNTER_BLK[3];
-        break;
-
-        case '4' : /* A counter block level 4 */
-            game_blocks[row][col].texture = COUNTER_BLK[4];
-        break;
-
-        case '5' : /* A counter block level 5  - highest */
-            game_blocks[row][col].texture = COUNTER_BLK[5];
-        break;
-
-        case '+' : /* A roamer block */
-            game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 25) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 27) / 2;
-			game_blocks[row][col].texture = ROAMER_BLK;
-        break;
-
-        case 'X' : /* A bomb */
-            game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 30) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 30) / 2;
-			game_blocks[row][col].texture = BOMB_BLK;
-        break;
-
-        case 'D' : /* A death block */
-            game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 30) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 30) / 2;
-			game_blocks[row][col].texture = DEATH_BLK;
-        break;
-
-        case 'L' : /* An extra ball block */
-			game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 30) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 19) / 2;
-            game_blocks[row][col].texture = EXTRABALL_BLK;
-        break;
-
-        case 'M' : /* A machine gun block */
-			game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 35) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 15) / 2;
-            game_blocks[row][col].texture = MGUN_BLK;
-        break;
-
-        case 'W' : /* A wall off block */
-			game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 27) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 23) / 2;
-            game_blocks[row][col].texture = WALLOFF_BLK;
-        break;
-
-        case '?' : /* A random changing block */
-            game_blocks[row][col].texture = RANDOM_BLK;
-		break;
-
-        case 'd' : /* A dropping block */
-            game_blocks[row][col].texture = DROP_BLK;
-        break;
-
-        case 'T' : /* A extra time block */
-			game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 21) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 21) / 2;
-            game_blocks[row][col].texture = TIMER_BLK;
-        break;
-
-        case 'm' : /* A multiple ball block */
-            game_blocks[row][col].texture = MULTIBALL_BLK;
-        break;
-
-        case 's' : /* A sticky block */
-			game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 32) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 27) / 2;
-            game_blocks[row][col].texture = STICKY_BLK;
-        break;
-
-        case 'R' :  /* reverse block - switch paddle control */
-			game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 33) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 16) / 2;
-            game_blocks[row][col].texture = REVERSE_BLK;
-        break;
-
-        case '<' :  /* shrink paddle block - make paddle smaller */
-			game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 40) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 15) / 2;
-            game_blocks[row][col].texture = PAD_SHRINK_BLK;
-        break;
-
-        case '>' :  /* expand paddle block - make paddle bigger */
-            game_blocks[row][col].blockOffsetX	= (playArea.colWidth - 40) / 2;
-			game_blocks[row][col].blockOffsetY 	= (playArea.rowHeight - 15) / 2;
-            game_blocks[row][col].texture = PAD_EXPAND_BLK;
-        break;
-
-        default:
-            game_blocks[row][col].blockOffsetX = -1;
-        break;
+static void AddBlock(int row, int col, char type) {
+    Block *block = &g_blocks[row][col];
+    
+    // Set default offsets
+    block->blockOffsetX = (g_playArea.colWidth - BLOCK_WIDTH) / 2;
+    block->blockOffsetY = (g_playArea.rowHeight - BLOCK_HEIGHT) / 2;
+    block->type = type;
+    
+    // Assign texture and custom offsets based on block type
+    switch (type) {
+        case 'H': block->texture = g_texHyperspace; block->blockOffsetX = (g_playArea.colWidth - 31) / 2; block->blockOffsetY = (g_playArea.rowHeight - 31) / 2; break;
+        case 'B': block->texture = g_texBullet; break;
+        case 'c': block->texture = g_texMaxAmmo; break;
+        case 'r': block->texture = g_texRed; break;
+        case 'g': block->texture = g_texGreen; break;
+        case 'b': block->texture = g_texBlue; break;
+        case 't': block->texture = g_texTan; break;
+        case 'p': block->texture = g_texPurple; break;
+        case 'y': block->texture = g_texYellow; break;
+        case 'w': block->texture = g_texBlack; block->blockOffsetX = (g_playArea.colWidth - 50) / 2; block->blockOffsetY = (g_playArea.rowHeight - 30) / 2; break;
+        case '0': block->texture = g_texCounter[0]; break;
+        case '1': block->texture = g_texCounter[1]; break;
+        case '2': block->texture = g_texCounter[2]; break;
+        case '3': block->texture = g_texCounter[3]; break;
+        case '4': block->texture = g_texCounter[4]; break;
+        case '5': block->texture = g_texCounter[5]; break;
+        case '+': block->texture = g_texRoamer; block->blockOffsetX = (g_playArea.colWidth - 25) / 2; block->blockOffsetY = (g_playArea.rowHeight - 27) / 2; break;
+        case 'X': block->texture = g_texBomb; block->blockOffsetX = (g_playArea.colWidth - 30) / 2; block->blockOffsetY = (g_playArea.rowHeight - 30) / 2; break;
+        case 'D': block->texture = g_texDeath; block->blockOffsetX = (g_playArea.colWidth - 30) / 2; block->blockOffsetY = (g_playArea.rowHeight - 30) / 2; break;
+        case 'L': block->texture = g_texExtraBall; block->blockOffsetX = (g_playArea.colWidth - 30) / 2; block->blockOffsetY = (g_playArea.rowHeight - 19) / 2; break;
+        case 'M': block->texture = g_texMGun; block->blockOffsetX = (g_playArea.colWidth - 35) / 2; block->blockOffsetY = (g_playArea.rowHeight - 15) / 2; break;
+        case 'W': block->texture = g_texWallOff; block->blockOffsetX = (g_playArea.colWidth - 27) / 2; block->blockOffsetY = (g_playArea.rowHeight - 23) / 2; break;
+        case '?': block->texture = g_texRandom; break;
+        case 'd': block->texture = g_texDrop; break;
+        case 'T': block->texture = g_texTimer; block->blockOffsetX = (g_playArea.colWidth - 21) / 2; block->blockOffsetY = (g_playArea.rowHeight - 21) / 2; break;
+        case 'm': block->texture = g_texMultiBall; break;
+        case 's': block->texture = g_texSticky; block->blockOffsetX = (g_playArea.colWidth - 32) / 2; block->blockOffsetY = (g_playArea.rowHeight - 27) / 2; break;
+        case 'R': block->texture = g_texReverse; block->blockOffsetX = (g_playArea.colWidth - 33) / 2; block->blockOffsetY = (g_playArea.rowHeight - 16) / 2; break;
+        case '<': block->texture = g_texPadShrink; block->blockOffsetX = (g_playArea.colWidth - 40) / 2; block->blockOffsetY = (g_playArea.rowHeight - 15) / 2; break;
+        case '>': block->texture = g_texPadExpand; block->blockOffsetX = (g_playArea.colWidth - 40) / 2; block->blockOffsetY = (g_playArea.rowHeight - 15) / 2; break;
+        default: block->blockOffsetX = -1; break;
     }
-
-    game_blocks[row][col].position = (Vector2){
-        (col * playArea.colWidth) + game_blocks[row][col].blockOffsetX + PLAY_X_OFFSET,
-        (row * playArea.rowHeight) + game_blocks[row][col].blockOffsetY + PLAY_Y_OFFSET
+    
+    // Calculate final position
+    block->position = (Vector2){
+        (col * g_playArea.colWidth) + block->blockOffsetX + PLAY_X_OFFSET,
+        (row * g_playArea.rowHeight) + block->blockOffsetY + PLAY_Y_OFFSET
     };
-
-    if (game_blocks[row][col].blockOffsetX != -1) {
-        game_blocks[row][col].active = true;
-        if (ch != 'w') blocksRemaining++;  //solid wall blocks cannot be destroyed and should not count
+    
+    // Set active state and count destructible blocks
+    if (block->blockOffsetX != -1) {
+        block->active = true;
+        if (type != 'w') {  // Wall blocks don't count
+            g_blocksRemaining++;
+        }
     } else {
-        game_blocks[row][col].active = false;
+        block->active = false;
     }
-
 }
 
 
-bool loadBlockTextures(void){
-    HYPERSPACE_BLK = LoadTexture(BLOCK_TEXTURES "hypspc.png");
-    if (HYPERSPACE_BLK.id == 0) return false;
+bool Blocks_LoadTextures(void) {
+    bool success = true;
+    
+    #define LOAD_TEXTURE(var, file) \
+        var = LoadTexture(PATH_BLOCK_TEXTURES file); \
+        if (var.id == 0) { \
+            fprintf(stderr, "[Blocks] Failed to load: %s\n", file); \
+            success = false; \
+        }
+    
+    LOAD_TEXTURE(g_texHyperspace, "hypspc.png");
+    LOAD_TEXTURE(g_texBullet, "speed.png");
+    LOAD_TEXTURE(g_texMaxAmmo, "lotsammo.png");
+    LOAD_TEXTURE(g_texRed, "redblk.png");
+    LOAD_TEXTURE(g_texGreen, "grnblk.png");
+    LOAD_TEXTURE(g_texBlue, "blueblk.png");
+    LOAD_TEXTURE(g_texTan, "tanblk.png");
+    LOAD_TEXTURE(g_texPurple, "purpblk.png");
+    LOAD_TEXTURE(g_texYellow, "yellblk.png");
+    LOAD_TEXTURE(g_texBlack, "blakblk.png");
+    LOAD_TEXTURE(g_texRoamer, "roamer.png");
+    LOAD_TEXTURE(g_texBomb, "bombblk.png");
+    LOAD_TEXTURE(g_texDeath, "death1.png");
+    LOAD_TEXTURE(g_texExtraBall, "xtrabal.png");
+    LOAD_TEXTURE(g_texMGun, "machgun.png");
+    LOAD_TEXTURE(g_texWallOff, "walloff.png");
+    LOAD_TEXTURE(g_texRandom, "redblk.png");
+    LOAD_TEXTURE(g_texDrop, "grnblk.png");
+    LOAD_TEXTURE(g_texTimer, "clock.png");
+    LOAD_TEXTURE(g_texMultiBall, "multibal.png");
+    LOAD_TEXTURE(g_texSticky, "stkyblk.png");
+    LOAD_TEXTURE(g_texReverse, "reverse.png");
+    LOAD_TEXTURE(g_texPadShrink, "padshrk.png");
+    LOAD_TEXTURE(g_texPadExpand, "padexpn.png");
+    
+    LOAD_TEXTURE(g_texCounter[0], "cntblk.png");
+    LOAD_TEXTURE(g_texCounter[1], "cntblk1.png");
+    LOAD_TEXTURE(g_texCounter[2], "cntblk2.png");
+    LOAD_TEXTURE(g_texCounter[3], "cntblk3.png");
+    LOAD_TEXTURE(g_texCounter[4], "cntblk4.png");
+    LOAD_TEXTURE(g_texCounter[5], "cntblk5.png");
+    
+    #undef LOAD_TEXTURE
+    
+    if (success) {
+        fprintf(stdout, "[Blocks] Successfully loaded all block textures\n");
+    }
+    
+    return success;
+}
 
-    BULLET_BLK = LoadTexture(BLOCK_TEXTURES "speed.png");// Green block drawn without bullet texture
-    if (BULLET_BLK.id == 0) return false;
-
-    MAXAMMO_BLK = LoadTexture(BLOCK_TEXTURES "lotsammo.png");
-    if (MAXAMMO_BLK.id == 0) return false;
-
-    RED_BLK = LoadTexture(BLOCK_TEXTURES "redblk.png");
-    if (RED_BLK.id == 0) return false;
-
-    GREEN_BLK = LoadTexture(BLOCK_TEXTURES "grnblk.png");
-    if (GREEN_BLK.id == 0) return false;
-
-	BLUE_BLK = LoadTexture(BLOCK_TEXTURES "blueblk.png");
-    if (BLUE_BLK.id == 0) return false;
-
-    TAN_BLK = LoadTexture(BLOCK_TEXTURES "tanblk.png");
-    if (TAN_BLK.id == 0) return false;
-
-    PURPLE_BLK = LoadTexture(BLOCK_TEXTURES "purpblk.png");
-    if (PURPLE_BLK.id == 0) return false;
-
-    YELLOW_BLK = LoadTexture(BLOCK_TEXTURES "yellblk.png");
-    if (YELLOW_BLK.id == 0) return false;
-
-	BLACK_BLK = LoadTexture(BLOCK_TEXTURES "blakblk.png");
-    if (BLACK_BLK.id == 0) return false;
-
-    ROAMER_BLK = LoadTexture(BLOCK_TEXTURES "roamer.png");
-    if (ROAMER_BLK.id == 0) return false;
-
-    BOMB_BLK = LoadTexture(BLOCK_TEXTURES "bombblk.png");
-    if (BOMB_BLK.id == 0) return false;
-
-    DEATH_BLK = LoadTexture(BLOCK_TEXTURES "death1.png");
-    if (DEATH_BLK.id == 0) return false;
-
-    EXTRABALL_BLK = LoadTexture(BLOCK_TEXTURES "xtrabal.png");
-    if (EXTRABALL_BLK.id == 0) return false;
-
-	MGUN_BLK = LoadTexture(BLOCK_TEXTURES "machgun.png");
-    if (MGUN_BLK.id == 0) return false;
-
-    WALLOFF_BLK = LoadTexture(BLOCK_TEXTURES "walloff.png");
-    if (WALLOFF_BLK.id == 0) return false;
-
-    RANDOM_BLK = LoadTexture(BLOCK_TEXTURES "redblk.png");// Red block loaded instead of random block selection
-    if (RANDOM_BLK.id == 0) return false;
-
-    DROP_BLK = LoadTexture(BLOCK_TEXTURES "grnblk.png");// Green block drawn without hit points (text)
-    if (DROP_BLK.id == 0) return false;
-
-    TIMER_BLK = LoadTexture(BLOCK_TEXTURES "clock.png");
-    if (TIMER_BLK.id == 0) return false;
-
-	MULTIBALL_BLK = LoadTexture(BLOCK_TEXTURES "multibal.png");
-    if (MULTIBALL_BLK.id == 0) return false;
-
-    STICKY_BLK = LoadTexture(BLOCK_TEXTURES "stkyblk.png");
-    if (STICKY_BLK.id == 0) return false;
-
-    REVERSE_BLK = LoadTexture(BLOCK_TEXTURES "reverse.png");
-    if (REVERSE_BLK.id == 0) return false;
-
-    PAD_SHRINK_BLK = LoadTexture(BLOCK_TEXTURES "padshrk.png");
-    if (PAD_SHRINK_BLK.id == 0) return false;
-
-	PAD_EXPAND_BLK = LoadTexture(BLOCK_TEXTURES "padexpn.png");
-    if (PAD_EXPAND_BLK.id == 0) return false;
-
-
-    COUNTER_BLK[0] = LoadTexture(BLOCK_TEXTURES "cntblk.png");
-    COUNTER_BLK[1] = LoadTexture(BLOCK_TEXTURES "cntblk1.png");
-    COUNTER_BLK[2] = LoadTexture(BLOCK_TEXTURES "cntblk2.png");
-    COUNTER_BLK[3] = LoadTexture(BLOCK_TEXTURES "cntblk3.png");
-    COUNTER_BLK[4] = LoadTexture(BLOCK_TEXTURES "cntblk4.png");
-    COUNTER_BLK[5] = LoadTexture(BLOCK_TEXTURES "cntblk5.png");
-
+void Blocks_FreeTextures(void) {
+    UnloadTexture(g_texHyperspace);
+    UnloadTexture(g_texBullet);
+    UnloadTexture(g_texMaxAmmo);
+    UnloadTexture(g_texRed);
+    UnloadTexture(g_texGreen);
+    UnloadTexture(g_texBlue);
+    UnloadTexture(g_texTan);
+    UnloadTexture(g_texPurple);
+    UnloadTexture(g_texYellow);
+    UnloadTexture(g_texBlack);
+    UnloadTexture(g_texRoamer);
+    UnloadTexture(g_texBomb);
+    UnloadTexture(g_texDeath);
+    UnloadTexture(g_texExtraBall);
+    UnloadTexture(g_texMGun);
+    UnloadTexture(g_texWallOff);
+    UnloadTexture(g_texRandom);
+    UnloadTexture(g_texDrop);
+    UnloadTexture(g_texTimer);
+    UnloadTexture(g_texMultiBall);
+    UnloadTexture(g_texSticky);
+    UnloadTexture(g_texReverse);
+    UnloadTexture(g_texPadShrink);
+    UnloadTexture(g_texPadExpand);
+    
     for (int i = 0; i < 6; i++) {
-        if (COUNTER_BLK[i].id == 0) return false;
+        UnloadTexture(g_texCounter[i]);
     }
-
-    return true;
+    
+    fprintf(stdout, "[Blocks] Textures freed\n");
 }
 
 
-void freeBlockTextures(void) {
-    UnloadTexture(HYPERSPACE_BLK);
-    UnloadTexture(BULLET_BLK);
-    UnloadTexture(MAXAMMO_BLK);
-    UnloadTexture(RED_BLK);
-    UnloadTexture(GREEN_BLK);
-    UnloadTexture(BLUE_BLK);
-    UnloadTexture(TAN_BLK);
-    UnloadTexture(PURPLE_BLK);
-    UnloadTexture(YELLOW_BLK);
-    UnloadTexture(BLACK_BLK);
-    UnloadTexture(ROAMER_BLK);
-    UnloadTexture(BOMB_BLK);
-    UnloadTexture(DEATH_BLK);
-    UnloadTexture(EXTRABALL_BLK);
-    UnloadTexture(MGUN_BLK);
-    UnloadTexture(WALLOFF_BLK);
-    UnloadTexture(RANDOM_BLK);
-    UnloadTexture(DROP_BLK);
-    UnloadTexture(TIMER_BLK);
-    UnloadTexture(MULTIBALL_BLK);
-    UnloadTexture(STICKY_BLK);
-    UnloadTexture(REVERSE_BLK);
-    UnloadTexture(PAD_SHRINK_BLK);
-    UnloadTexture(PAD_EXPAND_BLK);
+// =============================================================================
+// Public Functions - Block Queries
+// =============================================================================
 
-    for (int i = 0; i < 6; i++) {
-        UnloadTexture(COUNTER_BLK[i]);
-    }
-}
-
-
-Rectangle getBlockCollisionRec(int row, int col) {
-    return (Rectangle) {
-        game_blocks[row][col].position.x,
-        game_blocks[row][col].position.y,
-        game_blocks[row][col].texture.width,
-        game_blocks[row][col].texture.height
+Rectangle Blocks_GetCollisionRect(int row, int col) {
+    return (Rectangle){
+        g_blocks[row][col].position.x,
+        g_blocks[row][col].position.y,
+        g_blocks[row][col].texture.width,
+        g_blocks[row][col].texture.height
     };
 }
 
+bool Blocks_IsActive(int row, int col) {
+    if (row < 0 || row >= BLOCK_ROWS_MAX || col < 0 || col >= BLOCK_COLS_MAX) {
+        return false;
+    }
+    return g_blocks[row][col].active;
+}
 
-int getBlockRowMax(void) {
-    return ROW_MAX;
+int Blocks_GetRowMax(void) {
+    return BLOCK_ROWS_MAX;
+}
+
+int Blocks_GetColMax(void) {
+    return BLOCK_COLS_MAX;
+}
+
+int Blocks_GetRemainingCount(void) {
+    return g_blocksRemaining;
 }
 
 
-int getBlockColMax(void) {
-    return COL_MAX;
+static void DeactivateBlock(int row, int col) {
+    if (!g_blocks[row][col].active || g_blocks[row][col].type == 'w') {
+        return;  // Already inactive or indestructible wall
+    }
+    g_blocks[row][col].active = false;
+    g_blocksRemaining--;
 }
 
-
-bool isBlockActive(int row, int col) {
-    return game_blocks[row][col].active;
+static bool IsBlockTypeIndestructible(char type) {
+    return (type == 'w');
 }
 
+static Vector2 GetPlayCorner(Corner corner) {
+    switch (corner) {
+        case CORNER_UPPER_LEFT:
+            return (Vector2){PLAY_X_OFFSET - 1, PLAY_Y_OFFSET - 1};
+            
+        case CORNER_UPPER_RIGHT:
+            return (Vector2){
+                PLAY_X_OFFSET + g_playArea.playWidth,
+                PLAY_Y_OFFSET - 1
+            };
+            
+        case CORNER_LOWER_LEFT:
+            return (Vector2){
+                PLAY_X_OFFSET - 1,
+                PLAY_Y_OFFSET + g_playArea.playHeight
+            };
+            
+        case CORNER_LOWER_RIGHT:
+            return (Vector2){
+                g_playArea.playWidth + 1,
+                PLAY_Y_OFFSET + g_playArea.playHeight
+            };
+    }
+    
+    return (Vector2){0, 0};
+}
 
-void activateBlock(int row, int col) {
+// =============================================================================
+// Public Functions - Wall Queries
+// =============================================================================
 
-    switch(game_blocks[row][col].type) {
+Rectangle Blocks_GetWall(Wall wall) {
+    int screenWidth = GetScreenWidth();
+    int screenHeight = GetScreenHeight();
+    Vector2 upperLeft = GetPlayCorner(CORNER_UPPER_LEFT);
+    Vector2 upperRight = GetPlayCorner(CORNER_UPPER_RIGHT);
+    Vector2 lowerLeft = GetPlayCorner(CORNER_LOWER_LEFT);
+    
+    switch (wall) {
+        case WALL_LEFT:
+            return (Rectangle){0, 0, lowerLeft.x, screenHeight};
+            
+        case WALL_RIGHT:
+            return (Rectangle){
+                upperRight.x,
+                0,
+                screenWidth - upperRight.x,
+                screenHeight
+            };
+            
+        case WALL_TOP:
+            return (Rectangle){0, 0, screenWidth, upperRight.y};
+            
+        case WALL_BOTTOM:
+            return (Rectangle){
+                0,
+                lowerLeft.y + upperLeft.y,
+                screenWidth,
+                screenHeight - lowerLeft.y
+            };
+    }
+    
+    return (Rectangle){0, 0, 0, 0};
+}
 
-        case 'w': // wall, do nothing
+// =============================================================================
+// Public Functions - Block Interaction
+// =============================================================================
+
+void Blocks_Activate(int row, int col) {
+    Block *block = &g_blocks[row][col];
+    
+    switch (block->type) {
+        case 'w':  // Indestructible wall
             break;
-
-        case 's': // sticky
-            SetBallSticky();
-            startSound(SND_STICKY);
-            deactivateBlock(row, col);
+            
+        case 's':  // Sticky paddle
+            Ball_SetSticky();
+            Audio_PlaySound(SND_STICKY);
+            DeactivateBlock(row, col);
             break;
-
-        case 'R': //reverse paddle
+            
+        case 'R':  // Reverse paddle controls
             ToggleReverse();
-            startSound(SND_WARP);
-            deactivateBlock(row, col);
+            Audio_PlaySound(SND_WARP);
+            DeactivateBlock(row, col);
             break;
-
-        case 'B': // ball speed increased
-            IncreaseBallSpeed();
-            startSound(SND_BOING);
-            deactivateBlock(row, col);
+            
+        case 'B':  // Increase ball speed
+            Ball_IncreaseSpeed();
+            Audio_PlaySound(SND_BOING);
+            DeactivateBlock(row, col);
             break;
-
-        case '<': //shrink paddle
+            
+        case '<':  // Shrink paddle
             ChangePaddleSize(SIZE_DOWN);
-            startSound(SND_WZZZ2);
-            deactivateBlock(row, col);
+            Audio_PlaySound(SND_WZZZ2);
+            DeactivateBlock(row, col);
             break;
-
-        case '>': //grow paddle
+            
+        case '>':  // Expand paddle
             ChangePaddleSize(SIZE_UP);
-            startSound(SND_WZZZ);
-            deactivateBlock(row, col);
+            Audio_PlaySound(SND_WZZZ);
+            DeactivateBlock(row, col);
             break;
-
-        case 'X': // bomb
-            // destroy the surrounding 8 blocks without triggering them
-            startSound(SND_BOMB);
-            for (int i = 0; i < 3; i++ ) {
-                int rowOffset = row - 1 + i;
-                if (rowOffset < 0 || rowOffset >= ROW_MAX) continue;
-                for (int j = 0; j < 3; j++) {
-                    int colOffset = col - 1 + j;
-                    if (colOffset < 0 || colOffset >= COL_MAX) continue;
-                    deactivateBlock(rowOffset, colOffset);
+            
+        case 'X':  // Bomb - destroy surrounding blocks
+            Audio_PlaySound(SND_BOMB);
+            for (int i = -1; i <= 1; i++) {
+                int r = row + i;
+                if (r < 0 || r >= BLOCK_ROWS_MAX) continue;
+                
+                for (int j = -1; j <= 1; j++) {
+                    int c = col + j;
+                    if (c < 0 || c >= BLOCK_COLS_MAX) continue;
+                    
+                    DeactivateBlock(r, c);
                 }
             }
             break;
-
-        case '1': // number block 1
-            startSound(SND_TOUCH);
-            game_blocks[row][col].texture = COUNTER_BLK[0];
-            game_blocks[row][col].type = '0';
+            
+        case '5':  // Counter block level 5
+            Audio_PlaySound(SND_TOUCH);
+            block->texture = g_texCounter[4];
+            block->type = '4';
             break;
-
-        case '2': // number block 2
-            startSound(SND_TOUCH);
-            game_blocks[row][col].texture = COUNTER_BLK[1];
-            game_blocks[row][col].type = '1';
+            
+        case '4':  // Counter block level 4
+            Audio_PlaySound(SND_TOUCH);
+            block->texture = g_texCounter[3];
+            block->type = '3';
             break;
-
-        case '3': // number block 3
-            startSound(SND_TOUCH);
-            game_blocks[row][col].texture = COUNTER_BLK[2];
-            game_blocks[row][col].type = '2';
+            
+        case '3':  // Counter block level 3
+            Audio_PlaySound(SND_TOUCH);
+            block->texture = g_texCounter[2];
+            block->type = '2';
             break;
-
-        case '4': // number block 4
-            startSound(SND_TOUCH);
-            game_blocks[row][col].texture = COUNTER_BLK[3];
-            game_blocks[row][col].type = '3';
+            
+        case '2':  // Counter block level 2
+            Audio_PlaySound(SND_TOUCH);
+            block->texture = g_texCounter[1];
+            block->type = '1';
             break;
-
-        case '5': // number block 5
-            startSound(SND_TOUCH);
-            game_blocks[row][col].texture = COUNTER_BLK[4];
-            game_blocks[row][col].type = '4';
+            
+        case '1':  // Counter block level 1
+            Audio_PlaySound(SND_TOUCH);
+            block->texture = g_texCounter[0];
+            block->type = '0';
             break;
-
-        default:
-            startSound(SND_TOUCH);
-            deactivateBlock(row, col);
+            
+        default:  // All other blocks - simple destruction
+            Audio_PlaySound(SND_TOUCH);
+            DeactivateBlock(row, col);
             break;
     }
-
-    if (blocksRemaining == 0) {
-        startSound(SND_APPLAUSE);
+    
+    // Check for level completion
+    if (g_blocksRemaining == 0) {
+        Audio_PlaySound(SND_APPLAUSE);
         SetGameMode(MODE_WIN);
-        return;
     }
-
-
-}
-
-
-Vector2 getPlayCorner(CORNERS corner) {
-
-    switch (corner) {
-
-        case UPPER_LEFT:
-            return (Vector2){PLAY_X_OFFSET - 1, PLAY_Y_OFFSET - 1};
-            break;
-
-        case UPPER_RIGHT:
-            return (Vector2){PLAY_X_OFFSET + playArea.playWidth, PLAY_Y_OFFSET - 1};
-            break;
-
-        case LOWER_LEFT:
-            return (Vector2){PLAY_X_OFFSET - 1, PLAY_Y_OFFSET + playArea.playHeight};
-            break;
-
-        case LOWER_RIGHT:
-            return (Vector2){playArea.playWidth + 1, PLAY_Y_OFFSET + playArea.playHeight};
-            break;
-    }
-
-    // never should return this
-    return (Vector2){0};
-
-}
-
-
-Rectangle getPlayWall(WALLS wall) {
-
-    switch(wall) {
-        case WALL_LEFT:
-            return (Rectangle){0, 0, getPlayCorner(LOWER_LEFT).x, GetScreenHeight()};
-            break;
-
-        case WALL_RIGHT:
-            return (Rectangle){getPlayCorner(UPPER_RIGHT).x, 0, GetScreenWidth() - getPlayCorner(UPPER_RIGHT).x, GetScreenHeight()};
-            break;
-
-        case WALL_TOP:
-            return (Rectangle){0, 0, GetScreenWidth(), getPlayCorner(UPPER_RIGHT).y};
-            break;
-
-        case WALL_BOTTOM:
-            return (Rectangle){0, getPlayCorner(LOWER_LEFT).y + getPlayCorner(UPPER_LEFT).y, GetScreenWidth(), GetScreenHeight() - getPlayCorner(LOWER_RIGHT).y};
-            break;
-    }
-
-    // never should return this
-    return (Rectangle){0};
-
-}
-
-
-void drawWalls(void) {
-    DrawRectangleRec(getPlayWall(WALL_LEFT),GRAY);
-    DrawRectangleRec(getPlayWall(WALL_RIGHT),GRAY);
-    DrawRectangleRec(getPlayWall(WALL_TOP),GRAY);
-    DrawRectangleRec(getPlayWall(WALL_BOTTOM),GRAY);
-}
-
-
-bool isBlockTypeInteractive(char ch) {
-
-    return !(ch == 'w');
-
-}
-
-void deactivateBlock(int row, int col) {
-    if (!game_blocks[row][col].active || !isBlockTypeInteractive(game_blocks[row][col].type)) return;
-    game_blocks[row][col].active = false;
-    blocksRemaining--;
-}
-
-
-int getBlockCount(void) {
-    return blocksRemaining;
 }

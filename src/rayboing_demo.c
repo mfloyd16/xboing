@@ -1,7 +1,14 @@
+/**
+ * @file rayboing_demo.c
+ * @brief Main entry point for Rayboing game
+ */
+
 #include <stdio.h>
 #include <raylib.h>
 #include <stdbool.h>
 
+#include "core/constants.h"
+#include "core/types.h"
 #include "demo_gamemodes.h"
 #include "demo_blockloader.h"
 #include "demo_ball.h"
@@ -9,12 +16,8 @@
 #include "audio.h"
 #include "intro.h"
 
-const int SCREEN_WIDTH = 575;
-const int SCREEN_HEIGHT = 720;
-
-bool ValidateParamFilename(int argumentCount, char*arguments[]);
+bool ValidateParamFilename(int argumentCount, char *arguments[]);
 void ReleaseResources(void);
-
 
 int main(int argumentCount, char *arguments[]) {
 
@@ -53,7 +56,7 @@ int main(int argumentCount, char *arguments[]) {
         fprintf(stderr, "Program halt on initialize paddle");
     } else if (!InitializeBall()) {
         fprintf(stderr, "Program halt on initialize ball");
-    } else if (!initAudioFiles()) {
+    } else if (!Audio_Initialize()) {
         fprintf(stderr, "Program halt on initialize sounds");
     } else {
 
@@ -69,8 +72,8 @@ int main(int argumentCount, char *arguments[]) {
 
     // main game loop
     // main game loop
-GAME_MODES currentMode = GetGameMode();
-while (currentMode != MODE_EXIT) {
+    GameMode currentMode = GetGameMode();
+    while (currentMode != MODE_EXIT) {
 
     // Update input before game logic
     if (GetGameMode() == MODE_PLAY) {
@@ -152,5 +155,5 @@ void ReleaseResources(void) {
     FreePaddle();
     FreeBall();
     freeBlockTextures();
-    FreeAudioSystem();
+    Audio_Shutdown();
 }

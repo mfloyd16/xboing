@@ -1,79 +1,53 @@
 /**
  * @file audio.h
  * @brief Audio system for XBoing
+ * 
+ * Manages loading, playing, and cleanup of all game sound effects.
  */
 
-#ifndef _AUDIO_H_
-#define _AUDIO_H_
+#ifndef AUDIO_H
+#define AUDIO_H
 
-#include <raylib.h>
+#include <stdbool.h>
+#include "core/types.h"
+#include "core/constants.h"
 
-#define SOUND_COUNT 46
+// =============================================================================
+// Global Audio System
+// =============================================================================
+extern AudioSystem g_audioSystem;
 
-typedef enum {
-    SND_AMMO,
-    SND_APPLAUSE,
-    SND_BALL2BALL,
-    SND_BALLLOST,
-    SND_BALLSHOT,
-    SND_BOING,
-    SND_BOMB,
-    SND_BONUS,
-    SND_BUZZER,
-    SND_CLICK,
-    SND_DDLOO,
-    SND_DOH1,
-    SND_DOH2,
-    SND_DOH3,
-    SND_DOH4,
-    SND_EVILLAUGH,
-    SND_GAMEOVER,
-    SND_GATE,
-    SND_HITHERE,
-    SND_HYPSPC,
-    SND_INTRO,
-    SND_KEY,
-    SND_LOOKSBAD,
-    SND_METAL,
-    SND_MGUN,
-    SND_OUCH,
-    SND_PADDLE,
-    SND_PING,
-    SND_SHARK,
-    SND_SHOOT,
-    SND_SHOTGUN,
-    SND_SPRING,
-    SND_STAMP,
-    SND_STICKY,
-    SND_SUPBONS,
-    SND_TOGGLE,
-    SND_TONE,
-    SND_TOUCH,
-    SND_WALLSOFF,
-    SND_WARP,
-    SND_WEEEK,
-    SND_WHIZZO,
-    SND_WHOOSH,
-    SND_WZZZ,
-    SND_WZZZ2,
-    SND_YOUAGOD
-} SoundID;
+// =============================================================================
+// Public Functions
+// =============================================================================
 
-typedef struct AudioSystem {
-    Sound sounds[SOUND_COUNT];
-    float masterVolume;
-} AudioSystem;
+/**
+ * @brief Initialize the audio system and load all sound files
+ * @return true if all sounds loaded successfully, false otherwise
+ */
+bool Audio_Initialize(void);
 
-extern AudioSystem audio;
+/**
+ * @brief Free all audio resources
+ */
+void Audio_Shutdown(void);
 
-// Initialize audio system
-bool initAudioFiles(void);
+/**
+ * @brief Play a sound effect
+ * @param soundId The sound to play
+ */
+void Audio_PlaySound(SoundID soundId);
 
-// Free all resources
-void FreeAudioSystem(void);
-void FreeAudioSystemHelper(AudioSystem *audio);
+/**
+ * @brief Set the master volume for all sounds
+ * @param volume Volume level (0.0 to 1.0)
+ */
+void Audio_SetMasterVolume(float volume);
 
-// Play single-instance sound
-void startSound(SoundID ID);
+/**
+ * @brief Get the current master volume
+ * @return Current volume level (0.0 to 1.0)
+ */
+float Audio_GetMasterVolume(void);
 
-#endif // _AUDIO_H_
+#endif // AUDIO_H

@@ -97,6 +97,8 @@
   <ItemGroup>
     <ClInclude Include="..\include\audio.h" />
     <ClInclude Include="..\include\copyright.h" />
+    <ClInclude Include="..\include\core\constants.h" />
+    <ClInclude Include="..\include\core\types.h" />
     <ClInclude Include="..\include\demo_ball.h" />
     <ClInclude Include="..\include\demo_blockloader.h" />
     <ClInclude Include="..\include\demo_controls.h" />
