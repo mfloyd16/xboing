@@ -1,5 +1,5 @@
-#ifndef _DEMO_BALL_H_
-#define _DEMO_BALL_H_
+#ifndef _BALL_H_
+#define _BALL_H_
 
 #include <stdbool.h>
 
@@ -15,4 +15,4 @@ void SetBallSticky(void);
 void IncreaseBallSpeed(void);
 
 
-#endif // _DEMO_BALL_H_
+#endif // _BALL_H_

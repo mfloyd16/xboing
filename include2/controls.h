@@ -16,8 +16,8 @@
 // float GetPaddleWidth(void);
 // #endif // _DEMO_CONTROLS_H_
 
-#ifndef _DEMO_CONTROLS_H_
-#define _DEMO_CONTROLS_H_
+#ifndef _CONTROLS_H_
+#define _CONTROLS_H_
 
 #include <stdbool.h>
 #include <GLFW/glfw3.h>
@@ -28,4 +28,4 @@ bool IsInputQuitGame(void);
 bool IsInputReleaseBall(void);
 bool IsInputRestartAfterEnd(void);
 
-#endif // _DEMO_CONTROLS_H_
+#endif // _CONTROLS_H_

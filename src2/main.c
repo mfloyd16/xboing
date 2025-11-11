@@ -2,9 +2,9 @@
 #include <raylib.h>
 #include <stdbool.h>
 
-#include "demo_gamemodes.h"
-#include "demo_blockloader.h"
-#include "demo_ball.h"
+#include "gamemodes.h"
+#include "blockloader.h"
+#include "ball.h"
 #include "paddle.h"
 #include "audio.h"
 #include "intro.h"

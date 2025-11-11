@@ -1,5 +1,5 @@
-#ifndef _DEMO_BLOCKLOADER_H_
-#define _DEMO_BLOCKLOADER_H_
+#ifndef _BLOCKLOADER_H_
+#define _BLOCKLOADER_H_
 
 #include <raylib.h>
 #include <stdbool.h>
@@ -43,4 +43,4 @@ Rectangle getPlayWall(WALLS wall);
 void drawWalls(void);
 int getBlockCount(void);
 
-#endif // _DEMO_BLOCKLOADER_H
+#endif // _BLOCKLOADER_H_

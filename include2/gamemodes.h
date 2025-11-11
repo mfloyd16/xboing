@@ -1,5 +1,5 @@
-#ifndef _DEMO_GAMEMODES_H_
-#define _DEMO_GAMEMODES_H_
+#ifndef _GAMEMODES_H_
+#define _GAMEMODES_H_
 
 typedef enum {
     MODE_INITGAME,
@@ -19,4 +19,4 @@ void RunEndMode(void);
 
 
 
-#endif // _DEMO_GAMEMODES_H_
+#endif // _GAMEMODES_H_

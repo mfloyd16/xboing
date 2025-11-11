@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-#include "demo_blockloader.h"
-#include "demo_gamemodes.h"
-#include "demo_ball.h"
+#include "blockloader.h"
+#include "gamemodes.h"
+#include "ball.h"
 #include "audio.h"
 #define BLOCK_TEXTURES "resource/textures/blocks/"
 

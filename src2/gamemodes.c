@@ -1,11 +1,11 @@
 #include <stdbool.h>
 #include <raylib.h>
 
-#include "demo_gamemodes.h"
+#include "gamemodes.h"
 #include "paddle.h"
-#include "demo_controls.h"
-#include "demo_blockloader.h"
-#include "demo_ball.h"
+#include "controls.h"
+#include "blockloader.h"
+#include "ball.h"
 #include <stdio.h>
 const int INITIAL_LIVES = 3;
 int livesRemaining = 0;

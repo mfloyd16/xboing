@@ -4,9 +4,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "demo_ball.h"
-#include "demo_gamemodes.h"
-#include "demo_blockloader.h"
+#include "ball.h"
+#include "gamemodes.h"
+#include "blockloader.h"
 #include "audio.h"
 
 #define BALL_TEXTURES "resource/textures/balls/"

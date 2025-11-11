@@ -1,7 +1,7 @@
 #include <stdbool.h>
 #include <raylib.h>
 #include <GLFW/glfw3.h>
-#include "demo_controls.h"
+#include "controls.h"
 #include "paddle.h"
 #include <stdio.h>
 
