@@ -12,6 +12,7 @@ typedef enum SceneId {
     SCENE_GAME,
     SCENE_PADDLE_TEST,
     SCENE_BALL_TEST,
+    SCENE_BLOCK_TEST,
 } SceneId;
 
 /* Process input and update the current scene.

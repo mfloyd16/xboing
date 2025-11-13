@@ -6,6 +6,7 @@
 #include "../include/level.h"
 #include "../include/paddle.h"
 #include "../include/ball.h"
+#include "../include/block.h"
 
 /* Inner gameplay window constants */
 static const int INNER_GAP_TOP = 60;
@@ -104,6 +105,7 @@ bool Scene_Update(SceneId* current)
             }
             if (IsKeyPressed(KEY_G)) { *current = SCENE_PADDLE_TEST; }
             if (IsKeyPressed(KEY_B)) { *current = SCENE_BALL_TEST; }
+            if (IsKeyPressed(KEY_L)) { *current = SCENE_BLOCK_TEST; }
             return true;
 
         case SCENE_HOWTO:
@@ -114,6 +116,7 @@ bool Scene_Update(SceneId* current)
             }
             if (IsKeyPressed(KEY_G)) { *current = SCENE_PADDLE_TEST; }
             if (IsKeyPressed(KEY_B)) { *current = SCENE_BALL_TEST; }
+            if (IsKeyPressed(KEY_L)) { *current = SCENE_BLOCK_TEST; }
             return true;
 
         case SCENE_PADDLE_TEST:
@@ -121,6 +124,10 @@ bool Scene_Update(SceneId* current)
             return true;
 
         case SCENE_BALL_TEST:
+            if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
+            return true;
+
+        case SCENE_BLOCK_TEST:
             if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
             return true;
 
@@ -190,6 +197,10 @@ void Scene_Draw(SceneId current)
     {
         /* Just plain black inside already drawn inner window */
     }
+    else if (current == SCENE_BLOCK_TEST)
+    {
+        /* Just plain black inside already drawn inner window */
+    }
     
     /* Draw thick dark red border around inner window - drawn last so it appears on top */
     int borderThickness = 2;
@@ -223,5 +234,22 @@ void Scene_Draw(SceneId current)
         if (!initBall) { Ball_Init(&ball, inner); initBall = true; }
         Ball_Update(&ball, GetFrameTime(), inner);
         Ball_Draw(&ball);
+    }
+
+    /* Block test overlay (load level and render blocks) */
+    if (current == SCENE_BLOCK_TEST) {
+        static Level level;
+        static BlockGrid grid;
+        static bool initBlocks = false;
+        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+        if (!initBlocks) {
+            if (Level_Load("resource/levels/level01.data", &level)) {
+                BlockGrid_Load(&grid, &level, inner);
+                initBlocks = true;
+            }
+        }
+        if (initBlocks) {
+            BlockGrid_Draw(&grid, inner);
+        }
     }
 }
