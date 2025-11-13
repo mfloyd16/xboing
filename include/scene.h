@@ -10,6 +10,7 @@ typedef enum SceneId {
     SCENE_INTRO = 0,
     SCENE_HOWTO,
     SCENE_GAME,
+    SCENE_PADDLE_TEST,
 } SceneId;
 
 /* Process input and update the current scene.

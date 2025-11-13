@@ -4,6 +4,7 @@
 #include "../include/anim.h"
 #include "../include/config.h"
 #include "../include/level.h"
+#include "../include/paddle.h"
 
 /* Inner gameplay window constants */
 static const int INNER_GAP_TOP = 60;
@@ -100,6 +101,7 @@ bool Scene_Update(SceneId* current)
             {
                 *current = SCENE_HOWTO;
             }
+            if (IsKeyPressed(KEY_G)) { *current = SCENE_PADDLE_TEST; }
             return true;
 
         case SCENE_HOWTO:
@@ -108,6 +110,11 @@ bool Scene_Update(SceneId* current)
             {
                 return false; /* request exit */
             }
+            if (IsKeyPressed(KEY_G)) { *current = SCENE_PADDLE_TEST; }
+            return true;
+
+        case SCENE_PADDLE_TEST:
+            if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
             return true;
 
         default:
@@ -168,6 +175,10 @@ void Scene_Draw(SceneId current)
 
 
     }
+    else if (current == SCENE_PADDLE_TEST)
+    {
+        /* Just plain black inside already drawn inner window */
+    }
     
     /* Draw thick dark red border around inner window - drawn last so it appears on top */
     int borderThickness = 2;
@@ -182,4 +193,14 @@ void Scene_Draw(SceneId current)
 
     /* Draw top-right outer window level counter */
     DrawLevelCounter(current);
+
+    /* Paddle test overlay (draw paddle within inner window) */
+    if (current == SCENE_PADDLE_TEST) {
+        static Paddle paddle;
+        static bool init = false;
+        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+        if (!init) { Paddle_Init(&paddle, inner); init = true; }
+        Paddle_Update(&paddle, GetFrameTime(), inner);
+        Paddle_Draw(&paddle);
+    }
 }
