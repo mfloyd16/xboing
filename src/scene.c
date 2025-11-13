@@ -4,11 +4,12 @@
 #include "../include/anim.h"
 #include "../include/config.h"
 #include "../include/level.h"
-#include "../include/paddle.h"
-#include "../include/ball.h"
-#include "../include/block.h"
 #include "../include/scenes/game.h"
-#include <math.h>
+#include "../include/scenes/intro.h"
+#include "../include/scenes/howto.h"
+#include "../include/scenes/paddle_test.h"
+#include "../include/scenes/ball_test.h"
+#include "../include/scenes/block_test.h"
 
 /* Inner gameplay window constants */
 static const int INNER_GAP_TOP = 60;
@@ -165,49 +166,38 @@ void Scene_Draw(SceneId current)
     /* Now draw scene content within the inner window */
     if (current == SCENE_INTRO)
     {
-        /* Draw tiled background inside inner window - clip to inner bounds */
-        for (int y = innerY; y < innerY + innerHeight; y += mnbgrnd.height) {
-            for (int x = innerX; x < innerX + innerWidth; x += mnbgrnd.width) {
-                /* Only draw if texture fits within inner window */
-                int drawWidth = mnbgrnd.width;
-                int drawHeight = mnbgrnd.height;
-                if (x + drawWidth > innerX + innerWidth) drawWidth = (innerX + innerWidth) - x;
-                if (y + drawHeight > innerY + innerHeight) drawHeight = (innerY + innerHeight) - y;
-
-                DrawTextureRec(mnbgrnd, (Rectangle){0, 0, drawWidth, drawHeight}, (Vector2){x, y}, WHITE);
-            }
-        }
-
-
+        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+        IntroScene_Init(inner);
+        IntroScene_Update(GetFrameTime(), inner);
+        IntroScene_Draw(inner);
     }
     else if (current == SCENE_HOWTO)
     {
-        /* Draw tiled background inside inner window - clip to inner bounds */
-        for (int y = innerY; y < innerY + innerHeight; y += bgrnd.height) {
-            for (int x = innerX; x < innerX + innerWidth; x += bgrnd.width) {
-                /* Only draw if texture fits within inner window */
-                int drawWidth = bgrnd.width;
-                int drawHeight = bgrnd.height;
-                if (x + drawWidth > innerX + innerWidth) drawWidth = (innerX + innerWidth) - x;
-                if (y + drawHeight > innerY + innerHeight) drawHeight = (innerY + innerHeight) - y;
-                
-                DrawTextureRec(bgrnd, (Rectangle){0, 0, drawWidth, drawHeight}, (Vector2){x, y}, WHITE);
-            }
-        }
-
-
+        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+        HowToScene_Init(inner);
+        HowToScene_Update(GetFrameTime(), inner);
+        HowToScene_Draw(inner);
     }
     else if (current == SCENE_PADDLE_TEST)
     {
-        /* Just plain black inside already drawn inner window */
+        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+        PaddleTestScene_Init(inner);
+        PaddleTestScene_Update(GetFrameTime(), inner);
+        PaddleTestScene_Draw(inner);
     }
     else if (current == SCENE_BALL_TEST)
     {
-        /* Just plain black inside already drawn inner window */
+        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+        BallTestScene_Init(inner);
+        BallTestScene_Update(GetFrameTime(), inner);
+        BallTestScene_Draw(inner);
     }
     else if (current == SCENE_BLOCK_TEST)
     {
-        /* Just plain black inside already drawn inner window */
+        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+        BlockTestScene_Init(inner);
+        BlockTestScene_Update(GetFrameTime(), inner);
+        BlockTestScene_Draw(inner);
     }
     else if (current == SCENE_GAME)
     {
@@ -228,42 +218,7 @@ void Scene_Draw(SceneId current)
     /* Draw top-right outer window level counter */
     DrawLevelCounter(current);
 
-    /* Paddle test overlay (draw paddle within inner window) */
-    if (current == SCENE_PADDLE_TEST) {
-        static Paddle paddle;
-        static bool init = false;
-        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
-        if (!init) { Paddle_Init(&paddle, inner); init = true; }
-        Paddle_Update(&paddle, GetFrameTime(), inner);
-        Paddle_Draw(&paddle);
-    }
-
-    /* Ball test overlay (update/draw ball bouncing in inner window) */
-    if (current == SCENE_BALL_TEST) {
-        static Ball ball;
-        static bool initBall = false;
-        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
-        if (!initBall) { Ball_Init(&ball, inner); initBall = true; }
-        Ball_Update(&ball, GetFrameTime(), inner);
-        Ball_Draw(&ball);
-    }
-
-    /* Block test overlay (load level and render blocks) */
-    if (current == SCENE_BLOCK_TEST) {
-        static Level level;
-        static BlockGrid grid;
-        static bool initBlocks = false;
-        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
-        if (!initBlocks) {
-            if (Level_Load("resource/levels/level01.data", &level)) {
-                BlockGrid_Load(&grid, &level, inner);
-                initBlocks = true;
-            }
-        }
-        if (initBlocks) {
-            BlockGrid_Draw(&grid, inner);
-        }
-    }
+    /* Test scenes delegated to their modules above. */
 
     /* GAME scene: delegated to game scene module */
     if (current == SCENE_GAME) {
