@@ -20,6 +20,9 @@ static int gGuideFrame = 11;     /* 11..1 (guide11..guide1) - start at right */
 static int gGuideDir = -1;       /* -1 backward (11->1), 1 forward (1->11) */
 static float gGuideTimer = 0.0f; /* seconds accumulator */
 
+/* Debug options */
+static bool gShowDebugLine = false; /* toggle with D key */
+
 static Texture2D GetGuideTextureByIndex(int idx)
 {
     switch (idx) {
@@ -71,6 +74,11 @@ void GameScene_Update(float dt, Rectangle bounds)
 
     /* Update paddle */
     Paddle_Update(&gPaddle, dt, bounds);
+
+    /* Toggle debug line with L key */
+    if (IsKeyPressed(KEY_L)) {
+        gShowDebugLine = !gShowDebugLine;
+    }
 
     /* If ball not launched, stick it to paddle and wait for launch input */
     if (!gBallLaunched) {
@@ -202,25 +210,27 @@ void GameScene_Draw(Rectangle bounds)
         int drawY = (int)(padTopY - gap - tex.height);
         DrawTexture(tex, drawX, drawY, Fade(WHITE, 0.85f));
 
-        /* Draw direction line showing where ball will launch */
-        Rectangle rBall = Ball_GetRect(&gBall);
-        float ballCenterX = rBall.x + rBall.width * 0.5f;
-        float ballCenterY = rBall.y + rBall.height * 0.5f;
-        
-        /* Compute launch angle from gauge frame (same as launch logic) */
-        const float minAngle = 3.14159265f / 4.0f;      /* 45° */
-        const float maxAngle = 3.0f * 3.14159265f / 4.0f; /* 135° */
-        float t = (float)(11 - gGuideFrame) / 10.0f;    /* reversed mapping */
-        float releaseAngle = minAngle + t * (maxAngle - minAngle);
-        
-        /* Draw line in launch direction */
-        const float lineLength = 80.0f;
-        Vector2 startPoint = { ballCenterX, ballCenterY };
-        Vector2 endPoint = {
-            ballCenterX + cosf(releaseAngle) * lineLength,
-            ballCenterY - sinf(releaseAngle) * lineLength /* negate Y for screen coords */
-        };
-        DrawLineEx(startPoint, endPoint, 2.0f, YELLOW);
+        /* Draw direction line showing where ball will launch (debug mode only) */
+        if (gShowDebugLine) {
+            Rectangle rBall = Ball_GetRect(&gBall);
+            float ballCenterX = rBall.x + rBall.width * 0.5f;
+            float ballCenterY = rBall.y + rBall.height * 0.5f;
+            
+            /* Compute launch angle from gauge frame (same as launch logic) */
+            const float minAngle = 3.14159265f / 4.0f;      /* 45° */
+            const float maxAngle = 3.0f * 3.14159265f / 4.0f; /* 135° */
+            float t = (float)(11 - gGuideFrame) / 10.0f;    /* reversed mapping */
+            float releaseAngle = minAngle + t * (maxAngle - minAngle);
+            
+            /* Draw line in launch direction */
+            const float lineLength = 80.0f;
+            Vector2 startPoint = { ballCenterX, ballCenterY };
+            Vector2 endPoint = {
+                ballCenterX + cosf(releaseAngle) * lineLength,
+                ballCenterY - sinf(releaseAngle) * lineLength /* negate Y for screen coords */
+            };
+            DrawLineEx(startPoint, endPoint, 2.0f, YELLOW);
+        }
     }
     Ball_Draw(&gBall);
 }
