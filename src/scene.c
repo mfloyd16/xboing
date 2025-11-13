@@ -16,6 +16,13 @@ static const int INNER_GAP_BOTTOM = 75;
 static const int INNER_GAP_LEFT = 35;
 static const int INNER_GAP_RIGHT = 40;
 
+/* Short loading delay between scenes to ignore previous inputs */
+static const float SCENE_TRANSITION_DELAY = 0.30f; /* seconds */
+static const float SCENE_FADE_HALFWAY = 0.15f; /* half the transition for fade-out, half for fade-in */
+static bool gTransitionActive = false;
+static float gTransitionTimer = 0.0f;
+static SceneId gTargetScene = SCENE_INTRO;
+
 /* Helper functions for inner gameplay window */
 static int GetInnerWindowX(void) { return INNER_GAP_LEFT; }
 static int GetInnerWindowY(void) { return INNER_GAP_TOP; }
@@ -34,6 +41,23 @@ static void CleanupSceneById(SceneId id)
         case SCENE_GAME:        GameScene_Cleanup(); break;
         default: break;
     }
+}
+
+/* Drain any queued key/char presses to avoid leaking into next scene */
+static void FlushInputQueues(void)
+{
+    while (GetKeyPressed() != 0) { /* drain */ }
+    while (GetCharPressed() != 0) { /* drain */ }
+}
+
+/* Begin a timed transition to the next scene */
+static void StartSceneTransition(SceneId from, SceneId to)
+{
+    gTransitionActive = true;
+    gTransitionTimer = SCENE_TRANSITION_DELAY;
+    gTargetScene = to;
+    CleanupSceneById(from);
+    FlushInputQueues();
 }
 
 /* Draw bottom-left text in the outer window depending on current scene */
@@ -110,55 +134,52 @@ bool Scene_Update(SceneId* current)
     SceneId old = *current;
     bool running = true;
 
+    /* If in transition, count down and finalize change when timer elapses */
+    if (gTransitionActive) {
+        gTransitionTimer -= GetFrameTime();
+        if (gTransitionTimer <= 0.0f) {
+            *current = gTargetScene;
+            gTransitionActive = false;
+            /* Extra safety: ensure no stale presses carry over */
+            FlushInputQueues();
+        }
+        return running; /* Skip input while transitioning */
+    }
+
     switch (*current)
     {
         case SCENE_INTRO:
-            if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) ||
-                IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
-            {
-                *current = SCENE_HOWTO;
-            }
-            if (IsKeyPressed(KEY_G)) { *current = SCENE_PADDLE_TEST; }
-            if (IsKeyPressed(KEY_B)) { *current = SCENE_BALL_TEST; }
-            if (IsKeyPressed(KEY_L)) { *current = SCENE_BLOCK_TEST; }
-            if (IsKeyPressed(KEY_S)) { *current = SCENE_GAME; }
+            /* Intro controls: H = How To, SPACE = Start Game */
+            if (IsKeyPressed(KEY_H)) { *current = SCENE_HOWTO; }
+            if (IsKeyPressed(KEY_SPACE)) { StartSceneTransition(*current, SCENE_GAME); }
+            /* Dev/test shortcuts remain */
+            if (IsKeyPressed(KEY_G)) { StartSceneTransition(*current, SCENE_PADDLE_TEST); }
+            if (IsKeyPressed(KEY_B)) { StartSceneTransition(*current, SCENE_BALL_TEST); }
+            if (IsKeyPressed(KEY_L)) { StartSceneTransition(*current, SCENE_BLOCK_TEST); }
             break;
 
         case SCENE_HOWTO:
-            if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) ||
-                IsMouseButtonPressed(MOUSE_LEFT_BUTTON) || IsKeyPressed(KEY_ESCAPE))
-            {
-                running = false; /* request exit */
-                break;
-            }
-            if (IsKeyPressed(KEY_G)) { *current = SCENE_PADDLE_TEST; }
-            if (IsKeyPressed(KEY_B)) { *current = SCENE_BALL_TEST; }
-            if (IsKeyPressed(KEY_L)) { *current = SCENE_BLOCK_TEST; }
-            if (IsKeyPressed(KEY_S)) { *current = SCENE_GAME; }
+            if (IsKeyPressed(KEY_B)) { *current = SCENE_INTRO; }
             break;
 
         case SCENE_PADDLE_TEST:
-            if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
+            if (IsKeyPressed(KEY_ESCAPE)) { StartSceneTransition(*current, SCENE_INTRO); }
             break;
 
         case SCENE_BALL_TEST:
-            if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
+            if (IsKeyPressed(KEY_ESCAPE)) { StartSceneTransition(*current, SCENE_INTRO); }
             break;
 
         case SCENE_BLOCK_TEST:
-            if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
+            if (IsKeyPressed(KEY_ESCAPE)) { StartSceneTransition(*current, SCENE_INTRO); }
             break;
 
         case SCENE_GAME:
-            if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
+            if (IsKeyPressed(KEY_ESCAPE)) { StartSceneTransition(*current, SCENE_INTRO); }
             break;
 
         default:
             break;
-    }
-
-    if (*current != old) {
-        CleanupSceneById(old);
     }
 
     return running;
@@ -183,44 +204,60 @@ void Scene_Draw(SceneId current)
     DrawRectangle(innerX, innerY, innerWidth, innerHeight, BLACK);
     
     /* Now draw scene content within the inner window */
-    if (current == SCENE_INTRO)
+    Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+    if (gTransitionActive)
     {
-        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+        /* Fade effect: first half fades out (black overlay grows), second half fades in (overlay shrinks) */
+        float fadeProgress = 1.0f - (gTransitionTimer / SCENE_TRANSITION_DELAY);
+        int alpha;
+        if (fadeProgress < 0.5f) {
+            /* First half: fade OUT (0 -> 255) */
+            alpha = (int)(fadeProgress * 2.0f * 255.0f);
+        } else {
+            /* Second half: fade IN (255 -> 0) */
+            alpha = (int)((1.0f - fadeProgress) * 2.0f * 255.0f);
+        }
+        if (alpha < 0) alpha = 0;
+        if (alpha > 255) alpha = 255;
+        
+        /* Draw black overlay with calculated alpha over the inner window */
+        DrawRectangle(innerX, innerY, innerWidth, innerHeight, (Color){0, 0, 0, (unsigned char)alpha});
+    }
+    else if (current == SCENE_INTRO)
+    {
         IntroScene_Init(inner);
         IntroScene_Update(GetFrameTime(), inner);
         IntroScene_Draw(inner);
     }
     else if (current == SCENE_HOWTO)
     {
-        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
         HowToScene_Init(inner);
         HowToScene_Update(GetFrameTime(), inner);
         HowToScene_Draw(inner);
     }
     else if (current == SCENE_PADDLE_TEST)
     {
-        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
         PaddleTestScene_Init(inner);
         PaddleTestScene_Update(GetFrameTime(), inner);
         PaddleTestScene_Draw(inner);
     }
     else if (current == SCENE_BALL_TEST)
     {
-        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
         BallTestScene_Init(inner);
         BallTestScene_Update(GetFrameTime(), inner);
         BallTestScene_Draw(inner);
     }
     else if (current == SCENE_BLOCK_TEST)
     {
-        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
         BlockTestScene_Init(inner);
         BlockTestScene_Update(GetFrameTime(), inner);
         BlockTestScene_Draw(inner);
     }
     else if (current == SCENE_GAME)
     {
-        /* Just plain black inside already drawn inner window */
+        GameScene_Init(inner);
+        GameScene_Update(GetFrameTime(), inner);
+        GameScene_Draw(inner);
     }
     
     /* Draw thick dark red border around inner window - drawn last so it appears on top */
@@ -239,11 +276,5 @@ void Scene_Draw(SceneId current)
 
     /* Test scenes delegated to their modules above. */
 
-    /* GAME scene: delegated to game scene module */
-    if (current == SCENE_GAME) {
-        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
-        GameScene_Init(inner);
-        GameScene_Update(GetFrameTime(), inner);
-        GameScene_Draw(inner);
-    }
+    /* Scene drawing complete */
 }
