@@ -3,6 +3,7 @@
 #include "../include/assets.h"
 #include "../include/anim.h"
 #include "../include/config.h"
+#include "../include/level.h"
 
 /* Inner gameplay window constants */
 static const int INNER_GAP_TOP = 60;
@@ -15,6 +16,39 @@ static int GetInnerWindowX(void) { return INNER_GAP_LEFT; }
 static int GetInnerWindowY(void) { return INNER_GAP_TOP; }
 static int GetInnerWindowWidth(void) { return WINDOW_WIDTH - INNER_GAP_LEFT - INNER_GAP_RIGHT; }
 static int GetInnerWindowHeight(void) { return WINDOW_HEIGHT - INNER_GAP_TOP - INNER_GAP_BOTTOM; }
+
+/* Draw bottom-left text in the outer window depending on current scene */
+static void DrawSceneFooter(SceneId current)
+{
+    const int margin = 60;
+    const int fontSize = 19;
+    const Color neonGreen = { 0, 255, 0, 255 };
+
+    const char* msg = "";
+    switch (current)
+    {
+        case SCENE_INTRO:  msg = "Welcome to XBoing"; break;
+        case SCENE_HOWTO:  msg = "Demonstration"; break;
+        case SCENE_GAME:   msg = Level_GetActiveTitle(); break;
+        default:           msg = ""; break;
+    }
+
+    if (msg[0] != '\0')
+    {
+        int y = WINDOW_HEIGHT - margin;
+        /* If gameplay, prefix with 'Level: ' if not already present */
+        if (current == SCENE_GAME) {
+            const char* title = msg;
+            if (title[0] != '\0') {
+                DrawText("Level: ", margin, y, fontSize, neonGreen);
+                int off = MeasureText("Level: ", fontSize);
+                DrawText(title, margin + off, y, fontSize, neonGreen);
+            }
+        } else {
+            DrawText(msg, margin + 19, y, fontSize, neonGreen);
+        }
+    }
+}
 
 void Scene_Init(void)
 {
@@ -90,7 +124,7 @@ void Scene_Draw(SceneId current)
             }
         }
 
-        
+
     }
     else if (current == SCENE_HOWTO)
     {
@@ -117,4 +151,7 @@ void Scene_Draw(SceneId current)
     DrawRectangle(innerX, innerY + innerHeight - borderThickness, innerWidth, borderThickness, darkRed);  /* Bottom */
     DrawRectangle(innerX, innerY, borderThickness, innerHeight, darkRed);  /* Left */
     DrawRectangle(innerX + innerWidth - borderThickness, innerY, borderThickness, innerHeight, darkRed);  /* Right */
+
+    /* Draw bottom-left outer window text last so it's visible */
+    DrawSceneFooter(current);
 }

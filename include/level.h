@@ -32,4 +32,10 @@ char Level_GetBlockAt(const Level* level, int row, int col);
 /* Debug: print level info to console */
 void Level_Print(const Level* level);
 
+/* Active level helpers (optional): set the current level to expose its title
+ * to UI layers (e.g., gameplay HUD). If no active level is set, the getter
+ * returns an empty string. */
+void Level_SetActive(const Level* level);
+const char* Level_GetActiveTitle(void);
+
 #endif /* LEVEL_H */

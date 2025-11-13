@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Optional active-level pointer for UI usage */
+static const Level* gActiveLevel = NULL;
+
 bool Level_Load(const char* filepath, Level* level)
 {
     if (!filepath || !level) {
@@ -118,4 +121,15 @@ void Level_Print(const Level* level)
         printf("  [%s]\n", level->grid[i]);
     }
     printf("==================\n");
+}
+
+void Level_SetActive(const Level* level)
+{
+    gActiveLevel = level;
+}
+
+const char* Level_GetActiveTitle(void)
+{
+    if (gActiveLevel && gActiveLevel->title[0] != '\0') return gActiveLevel->title;
+    return "";
 }

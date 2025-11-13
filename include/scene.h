@@ -9,6 +9,7 @@
 typedef enum SceneId {
     SCENE_INTRO = 0,
     SCENE_HOWTO,
+    SCENE_GAME,
 } SceneId;
 
 /* Process input and update the current scene.
