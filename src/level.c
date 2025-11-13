@@ -4,6 +4,7 @@
 
 /* Optional active-level pointer for UI usage */
 static const Level* gActiveLevel = NULL;
+static int gActiveLevelNumber = 0;
 
 bool Level_Load(const char* filepath, Level* level)
 {
@@ -132,4 +133,15 @@ const char* Level_GetActiveTitle(void)
 {
     if (gActiveLevel && gActiveLevel->title[0] != '\0') return gActiveLevel->title;
     return "";
+}
+
+void Level_SetActiveNumber(int number)
+{
+    if (number < 0) number = 0;
+    gActiveLevelNumber = number;
+}
+
+int Level_GetActiveNumber(void)
+{
+    return gActiveLevelNumber;
 }

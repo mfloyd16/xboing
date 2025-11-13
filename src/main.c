@@ -30,7 +30,6 @@ int main(void)
 	while (!WindowShouldClose() && Scene_Update(&current))
 	{
 		BeginDrawing();
-		ClearBackground(RAYWHITE);
 
 		Scene_Draw(current);
 

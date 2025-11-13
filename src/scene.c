@@ -50,6 +50,31 @@ static void DrawSceneFooter(SceneId current)
     }
 }
 
+/* Draw two-digit level counter in the top-right of the outer window */
+static void DrawLevelCounter(SceneId current)
+{
+    int number = 0;
+    if (current == SCENE_GAME) {
+        number = Level_GetActiveNumber();
+        if (number < 0) number = 0;
+    }
+    if (number > 99) number = 99; /* two-digit clamp */
+
+    int tens = number / 10;
+    int ones = number % 10;
+
+    /* Position near top-right corner */
+    const int margin = 12;
+    int wT = digits[tens].width;
+    int hT = digits[tens].height;
+    int wO = digits[ones].width;
+    int x = WINDOW_WIDTH - margin - wT - wO;
+    int y = margin;
+
+    DrawTexture(digits[tens], x, y, WHITE);
+    DrawTexture(digits[ones], x + wT, y, WHITE);
+}
+
 void Scene_Init(void)
 {
     /* Initialize scene resources via modules */
@@ -154,4 +179,7 @@ void Scene_Draw(SceneId current)
 
     /* Draw bottom-left outer window text last so it's visible */
     DrawSceneFooter(current);
+
+    /* Draw top-right outer window level counter */
+    DrawLevelCounter(current);
 }

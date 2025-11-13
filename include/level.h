@@ -38,4 +38,9 @@ void Level_Print(const Level* level);
 void Level_SetActive(const Level* level);
 const char* Level_GetActiveTitle(void);
 
+/* Active level number (for HUD): set/get current level index.
+ * Returns 0 when no active level is set. Clamped/rendered as two digits. */
+void Level_SetActiveNumber(int number);
+int Level_GetActiveNumber(void);
+
 #endif /* LEVEL_H */
