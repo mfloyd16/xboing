@@ -74,19 +74,28 @@ void GameScene_Update(float dt, Rectangle bounds)
         Rectangle rPad = Paddle_GetRect(&gPaddle);
         bool ballDownward = gBall.vel.y > 0.0f;
         if (CheckCollisionRecs(rBall, rPad) && ballDownward) {
-            /* Position ball above paddle and reflect Y */
+            /* Position ball above paddle */
             gBall.pos.y = rPad.y - rBall.height;
-            gBall.vel.y = -fabsf(gBall.vel.y);
 
-            /* Add a bit of X based on hit position */
+            /* Compute bounce angle from hit position with a max of 60 degrees from vertical */
             float padCenter = rPad.x + rPad.width * 0.5f;
             float ballCenter = rBall.x + rBall.width * 0.5f;
             float t = (ballCenter - padCenter) / (rPad.width * 0.5f); /* [-1, 1] */
             if (t < -1.0f) t = -1.0f; if (t > 1.0f) t = 1.0f;
-            float speed = sqrtf(gBall.vel.x * gBall.vel.x + gBall.vel.y * gBall.vel.y);
-            gBall.vel.x = t * speed;
-            /* Keep overall speed roughly constant */
-            float vy = -sqrtf(fmaxf(10.0f, speed * speed - gBall.vel.x * gBall.vel.x));
+
+            float speed = gBall.speed; /* enforce constant scalar speed */
+            const float maxAngleSin = 0.8660254f; /* sin(60 deg) */
+            gBall.vel.x = t * (speed * maxAngleSin);
+            /* Upward Y so negative; guarantees |vy| >= speed*cos(60)=0.5*speed */
+            float vy = -sqrtf(fmaxf(0.0f, speed * speed - gBall.vel.x * gBall.vel.x));
+            /* Safety: ensure a minimum vertical component in case of fp errors */
+            if (fabsf(vy) < speed * 0.4f) {
+                float sign = -1.0f; /* always upwards after paddle */
+                vy = sign * speed * 0.4f;
+                /* Recompute vx to preserve speed */
+                float vxMag = sqrtf(fmaxf(0.0f, speed * speed - vy * vy));
+                gBall.vel.x = (gBall.vel.x >= 0.0f ? vxMag : -vxMag);
+            }
             gBall.vel.y = vy;
         }
 
