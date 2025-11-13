@@ -7,6 +7,7 @@
 #include "../include/paddle.h"
 #include "../include/ball.h"
 #include "../include/block.h"
+#include "../include/scenes/game.h"
 #include <math.h>
 
 /* Inner gameplay window constants */
@@ -20,18 +21,6 @@ static int GetInnerWindowX(void) { return INNER_GAP_LEFT; }
 static int GetInnerWindowY(void) { return INNER_GAP_TOP; }
 static int GetInnerWindowWidth(void) { return WINDOW_WIDTH - INNER_GAP_LEFT - INNER_GAP_RIGHT; }
 static int GetInnerWindowHeight(void) { return WINDOW_HEIGHT - INNER_GAP_TOP - INNER_GAP_BOTTOM; }
-
-/* Helper: compute block rectangle in window coordinates */
-static Rectangle ComputeBlockRect(const BlockGrid* grid, const Block* blk, Rectangle inner)
-{
-    Texture2D tex = Block_GetTexture(blk->type);
-    Rectangle r;
-    r.x = inner.x + (float)(blk->col * grid->cellWidth + blk->offsetX);
-    r.y = inner.y + (float)(blk->row * grid->cellHeight + blk->offsetY);
-    r.width = (float)tex.width;
-    r.height = (float)tex.height;
-    return r;
-}
 
 /* Draw bottom-left text in the outer window depending on current scene */
 static void DrawSceneFooter(SceneId current)
@@ -276,97 +265,11 @@ void Scene_Draw(SceneId current)
         }
     }
 
-    /* GAME scene: paddle + ball + blocks with simple collisions */
+    /* GAME scene: delegated to game scene module */
     if (current == SCENE_GAME) {
-        /* Static state for simple scene lifecycle */
-        static bool initGame = false;
-        static Level level;
-        static BlockGrid grid;
-        static Paddle paddle;
-        static Ball ball;
         Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
-
-        if (!initGame) {
-            if (Level_Load("resource/levels/level01.data", &level)) {
-                Level_SetActive(&level);
-                Level_SetActiveNumber(1);
-                BlockGrid_Load(&grid, &level, inner);
-                Paddle_Init(&paddle, inner);
-                Ball_Init(&ball, inner);
-                initGame = true;
-            }
-        }
-
-        if (initGame) {
-            float dt = GetFrameTime();
-            /* Update actors */
-            Paddle_Update(&paddle, dt, inner);
-            Ball_Update(&ball, dt, inner);
-
-            /* Collisions: ball vs paddle */
-            Rectangle rBall = Ball_GetRect(&ball);
-            Rectangle rPad = Paddle_GetRect(&paddle);
-            bool ballDownward = ball.vel.y > 0.0f;
-            if (CheckCollisionRecs(rBall, rPad) && ballDownward) {
-                /* Position ball above paddle and reflect Y */
-                ball.pos.y = rPad.y - rBall.height;
-                ball.vel.y = -fabsf(ball.vel.y);
-
-                /* Add a bit of X based on hit position */
-                float padCenter = rPad.x + rPad.width * 0.5f;
-                float ballCenter = rBall.x + rBall.width * 0.5f;
-                float t = (ballCenter - padCenter) / (rPad.width * 0.5f); /* [-1, 1] */
-                if (t < -1.0f) t = -1.0f; if (t > 1.0f) t = 1.0f;
-                float speed = sqrtf(ball.vel.x * ball.vel.x + ball.vel.y * ball.vel.y);
-                ball.vel.x = t * speed;
-                /* Keep overall speed roughly constant */
-                float vy = -sqrtf(fmaxf(10.0f, speed * speed - ball.vel.x * ball.vel.x));
-                ball.vel.y = vy;
-            }
-
-            /* Collisions: ball vs blocks (first hit per frame) */
-            rBall = Ball_GetRect(&ball);
-            for (int i = 0; i < grid.count; i++) {
-                Block* blk = &grid.blocks[i];
-                if (!blk->active) continue;
-                Rectangle rBlk = ComputeBlockRect(&grid, blk, inner);
-                if (CheckCollisionRecs(rBall, rBlk)) {
-                    /* Deactivate block and reflect ball on shallow axis */
-                    blk->active = false;
-
-                    float overlapLeft = (rBall.x + rBall.width) - rBlk.x;
-                    float overlapRight = (rBlk.x + rBlk.width) - rBall.x;
-                    float overlapTop = (rBall.y + rBall.height) - rBlk.y;
-                    float overlapBottom = (rBlk.y + rBlk.height) - rBall.y;
-                    float minHoriz = fminf(overlapLeft, overlapRight);
-                    float minVert = fminf(overlapTop, overlapBottom);
-
-                    if (minHoriz < minVert) {
-                        /* Reflect X */
-                        if (overlapLeft < overlapRight) {
-                            ball.pos.x = rBlk.x - rBall.width; /* place to left */
-                        } else {
-                            ball.pos.x = rBlk.x + rBlk.width; /* place to right */
-                        }
-                        ball.vel.x = -ball.vel.x;
-                    } else {
-                        /* Reflect Y */
-                        if (overlapTop < overlapBottom) {
-                            ball.pos.y = rBlk.y - rBall.height; /* above */
-                        } else {
-                            ball.pos.y = rBlk.y + rBlk.height; /* below */
-                        }
-                        ball.vel.y = -ball.vel.y;
-                    }
-
-                    break; /* only one block per frame */
-                }
-            }
-
-            /* Draw */
-            BlockGrid_Draw(&grid, inner);
-            Paddle_Draw(&paddle);
-            Ball_Draw(&ball);
-        }
+        GameScene_Init(inner);
+        GameScene_Update(GetFrameTime(), inner);
+        GameScene_Draw(inner);
     }
 }
