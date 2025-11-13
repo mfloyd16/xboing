@@ -1,7 +1,6 @@
 #include "../include/scene.h"
 #include <raylib.h>
 #include "../include/assets.h"
-#include "../include/anim.h"
 #include "../include/config.h"
 #include "../include/level.h"
 #include "../include/scenes/game.h"
@@ -99,7 +98,6 @@ void Scene_Init(void)
 {
     /* Initialize scene resources via modules */
     Assets_Init();
-    Anim_Init();
 }
 
 void Scene_Cleanup(void)
@@ -109,9 +107,6 @@ void Scene_Cleanup(void)
 
 bool Scene_Update(SceneId* current)
 {
-    /* Update animation module */
-    Anim_Update(GetFrameTime());
-
     SceneId old = *current;
     bool running = true;
 
