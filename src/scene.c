@@ -5,6 +5,7 @@
 #include "../include/config.h"
 #include "../include/level.h"
 #include "../include/paddle.h"
+#include "../include/ball.h"
 
 /* Inner gameplay window constants */
 static const int INNER_GAP_TOP = 60;
@@ -102,6 +103,7 @@ bool Scene_Update(SceneId* current)
                 *current = SCENE_HOWTO;
             }
             if (IsKeyPressed(KEY_G)) { *current = SCENE_PADDLE_TEST; }
+            if (IsKeyPressed(KEY_B)) { *current = SCENE_BALL_TEST; }
             return true;
 
         case SCENE_HOWTO:
@@ -111,9 +113,14 @@ bool Scene_Update(SceneId* current)
                 return false; /* request exit */
             }
             if (IsKeyPressed(KEY_G)) { *current = SCENE_PADDLE_TEST; }
+            if (IsKeyPressed(KEY_B)) { *current = SCENE_BALL_TEST; }
             return true;
 
         case SCENE_PADDLE_TEST:
+            if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
+            return true;
+
+        case SCENE_BALL_TEST:
             if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
             return true;
 
@@ -179,6 +186,10 @@ void Scene_Draw(SceneId current)
     {
         /* Just plain black inside already drawn inner window */
     }
+    else if (current == SCENE_BALL_TEST)
+    {
+        /* Just plain black inside already drawn inner window */
+    }
     
     /* Draw thick dark red border around inner window - drawn last so it appears on top */
     int borderThickness = 2;
@@ -202,5 +213,15 @@ void Scene_Draw(SceneId current)
         if (!init) { Paddle_Init(&paddle, inner); init = true; }
         Paddle_Update(&paddle, GetFrameTime(), inner);
         Paddle_Draw(&paddle);
+    }
+
+    /* Ball test overlay (update/draw ball bouncing in inner window) */
+    if (current == SCENE_BALL_TEST) {
+        static Ball ball;
+        static bool initBall = false;
+        Rectangle inner = { (float)innerX, (float)innerY, (float)innerWidth, (float)innerHeight };
+        if (!initBall) { Ball_Init(&ball, inner); initBall = true; }
+        Ball_Update(&ball, GetFrameTime(), inner);
+        Ball_Draw(&ball);
     }
 }
