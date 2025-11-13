@@ -1,8 +1,10 @@
 #include "../include/scene.h"
 #include <raylib.h>
+#include <stdio.h>
 #include "../include/assets.h"
 #include "../include/config.h"
 #include "../include/level.h"
+#include "../include/score.h"
 #include "../include/scenes/game.h"
 #include "../include/scenes/intro.h"
 #include "../include/scenes/howto.h"
@@ -107,15 +109,54 @@ static void DrawLevelCounter(SceneId current)
     int ones = number % 10;
 
     /* Position near top-right corner */
-    const int margin = 12;
+    const int margin = 10;
     int wT = digits[tens].width;
     int hT = digits[tens].height;
     int wO = digits[ones].width;
-    int x = WINDOW_WIDTH - margin - wT - wO;
+    int x = WINDOW_WIDTH - 35 - wT - wO;
     int y = margin;
 
     DrawTexture(digits[tens], x, y, WHITE);
     DrawTexture(digits[ones], x + wT, y, WHITE);
+}
+
+/* Draw dynamic score centered within right half of the top area */
+static void DrawScoreCounter(SceneId current)
+{
+    int score = Score_Get();
+    /* Convert to string */
+    char buf[16];
+    if (score <= 0) {
+        buf[0] = '0'; buf[1] = '\0';
+    } else {
+        snprintf(buf, sizeof(buf), "%d", score);
+    }
+    /* Measure total width of digits */
+    int totalWidth = 0;
+    int digitHeight = 0;
+    for (const char* p = buf; *p; ++p) {
+        int idx = *p - '0';
+        if (idx < 0 || idx > 9) continue;
+        totalWidth += digits[idx].width;
+        if (digitHeight == 0) digitHeight = digits[idx].height;
+    }
+    const int marginTop = 10;
+    int halfStart = WINDOW_WIDTH / 2 - 45;
+    /*
+     Anchor the RIGHT edge so numbers grow left while preserving
+     the original placement of a single '0' (centered in right half).
+    */
+    int singleW = digits[0].width;
+    int anchorRight = halfStart - singleW / 2 + singleW;
+    int x = anchorRight - totalWidth;
+    int y = marginTop;
+    int advance = 0;
+    for (const char* p = buf; *p; ++p) {
+        int idx = *p - '0';
+        if (idx < 0 || idx > 9) continue;
+        DrawTexture(digits[idx], x + advance, y, WHITE);
+        advance += digits[idx].width;
+    }
 }
 
 void Scene_Init(void)
@@ -273,6 +314,7 @@ void Scene_Draw(SceneId current)
 
     /* Draw top-right outer window level counter */
     DrawLevelCounter(current);
+    DrawScoreCounter(current);
 
     /* Test scenes delegated to their modules above. */
 

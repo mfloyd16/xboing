@@ -4,6 +4,7 @@
 #include "../../include/block.h"
 #include "../../include/level.h"
 #include "../../include/gauge.h"
+#include "../../include/score.h"
 #include <math.h>
 #include <stdbool.h>
 
@@ -38,6 +39,7 @@ void GameScene_Init(Rectangle bounds)
             Paddle_Init(&gPaddle, bounds);
             Ball_Init(&gBall, bounds);
             Gauge_Init(&gGauge);
+            Score_Reset();
             gBallLaunched = false;
             gInitialized = true;
         }
@@ -122,6 +124,7 @@ void GameScene_Update(float dt, Rectangle bounds)
             if (CheckCollisionRecs(rBall, rBlk)) {
                 /* Deactivate block and reflect ball on shallow axis */
                 blk->active = false;
+                Score_Add(10); /* award points for destroying a block */
 
                 float overlapLeft = (rBall.x + rBall.width) - rBlk.x;
                 float overlapRight = (rBlk.x + rBlk.width) - rBall.x;
