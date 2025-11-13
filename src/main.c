@@ -4,6 +4,12 @@
 /* Include the scene API implemented in src/scene.c. Use a relative include
    path because this project compiles files from the src/ directory. */
 #include "../include/scene.h"
+#include "../include/config.h"
+#include "../include/level.h"
+
+/* Global window dimensions - change these to resize the entire game */
+const int WINDOW_WIDTH = 575;
+const int WINDOW_HEIGHT = 720;
 
 int main(void)
 {
@@ -11,9 +17,12 @@ int main(void)
 	SetTraceLogLevel(LOG_NONE);
 
 	/* Initialize window/audio and target FPS. */
-	InitWindow(800, 600, "Xboing");
+	InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Xboing");
 	InitAudioDevice();
 	SetTargetFPS(60);
+
+	/* Initialize scene resources (load textures) */
+	Scene_Init();
 
 	SceneId current = SCENE_INTRO;
 
@@ -28,7 +37,8 @@ int main(void)
 		EndDrawing();
 	}
 
-	/* Clean up and close. */
+	/* Clean up scene resources and close. */
+	Scene_Cleanup();
 	CloseWindow();
 	return 0;
 }

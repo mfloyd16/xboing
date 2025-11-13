@@ -21,4 +21,10 @@ bool Scene_Update(SceneId* current);
 /* Draw the current scene. Must be called between BeginDrawing()/EndDrawing(). */
 void Scene_Draw(SceneId current);
 
+/* Initialize scene resources (textures, etc.). Call after InitWindow(). */
+void Scene_Init(void);
+
+/* Free scene resources. Call before CloseWindow(). */
+void Scene_Cleanup(void);
+
 #endif /* XBOING_SCENE_H */
