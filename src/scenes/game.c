@@ -3,7 +3,7 @@
 #include "../../include/ball.h"
 #include "../../include/block.h"
 #include "../../include/level.h"
-#include "../../include/assets.h"
+#include "../../include/gauge.h"
 #include <math.h>
 #include <stdbool.h>
 
@@ -14,32 +14,7 @@ static Level gLevel;
 static BlockGrid gGrid;
 static Paddle gPaddle;
 static Ball gBall;
-
-/* Gauge animation state */
-static int gGuideFrame = 11;     /* 11..1 (guide11..guide1) - start at right */
-static int gGuideDir = -1;       /* -1 backward (11->1), 1 forward (1->11) */
-static float gGuideTimer = 0.0f; /* seconds accumulator */
-
-/* Debug options */
-static bool gShowDebugLine = false; /* toggle with D key */
-
-static Texture2D GetGuideTextureByIndex(int idx)
-{
-    switch (idx) {
-        case 1: return guide1;
-        case 2: return guide2;
-        case 3: return guide3;
-        case 4: return guide4;
-        case 5: return guide5;
-        case 6: return guide6;
-        case 7: return guide7;
-        case 8: return guide8;
-        case 9: return guide9;
-        case 10: return guide10;
-        case 11: return guide11;
-        default: return guide; /* fallback */
-    }
-}
+static Gauge gGauge;
 
 /* Helper: compute block rectangle in window coordinates */
 static Rectangle ComputeBlockRect(const Block* blk, Rectangle bounds)
@@ -62,6 +37,7 @@ void GameScene_Init(Rectangle bounds)
             BlockGrid_Load(&gGrid, &gLevel, bounds);
             Paddle_Init(&gPaddle, bounds);
             Ball_Init(&gBall, bounds);
+            Gauge_Init(&gGauge);
             gBallLaunched = false;
             gInitialized = true;
         }
@@ -77,7 +53,7 @@ void GameScene_Update(float dt, Rectangle bounds)
 
     /* Toggle debug line with L key */
     if (IsKeyPressed(KEY_L)) {
-        gShowDebugLine = !gShowDebugLine;
+        Gauge_ToggleDebug(&gGauge);
     }
 
     /* If ball not launched, stick it to paddle and wait for launch input */
@@ -87,26 +63,14 @@ void GameScene_Update(float dt, Rectangle bounds)
         gBall.pos.x = rPad.x + (rPad.width - Ball_GetRect(&gBall).width) * 0.5f;
         gBall.pos.y = rPad.y - Ball_GetRect(&gBall).height - 2.0f;
 
-        /* Update gauge animation (ping-pong 11..1..11) - slower sweep at 8 FPS for frame changes */
-        gGuideTimer += dt;
-        const float frameTime = 1.0f / 8.0f;  /* change frames slower */
-        while (gGuideTimer >= frameTime) {
-            gGuideTimer -= frameTime;
-            gGuideFrame += gGuideDir;
-            if (gGuideFrame > 11) { gGuideFrame = 10; gGuideDir = -1; }
-            else if (gGuideFrame < 1) { gGuideFrame = 2; gGuideDir = 1; }
-        }
+        /* Update gauge animation */
+        Gauge_Update(&gGauge, dt);
 
         /* Launch on space or left click */
         if (IsKeyPressed(KEY_SPACE) || IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             gBallLaunched = true;
-            /* Map gauge frame (1..11) to launch angle: frame 11 = left (45°), frame 6 = up (90°), frame 1 = right (135°) */
-            /* Angle range: 45° to 135° (π/4 to 3π/4) - reversed mapping */
-            const float minAngle = 3.14159265f / 4.0f;      /* 45° (left-upward) */
-            const float maxAngle = 3.0f * 3.14159265f / 4.0f; /* 135° (right-upward) */
-            float t = (float)(11 - gGuideFrame) / 10.0f;    /* normalize frame 11..1 to 0..1 (reversed) */
-            float releaseAngle = minAngle + t * (maxAngle - minAngle);
-            
+            /* Get launch angle from gauge and set ball velocity */
+            float releaseAngle = Gauge_GetLaunchAngle(&gGauge);
             float speed = gBall.speed;
             gBall.vel.x = cosf(releaseAngle) * speed;
             gBall.vel.y = -sinf(releaseAngle) * speed; /* negate Y for screen coords (up is negative) */
@@ -115,9 +79,7 @@ void GameScene_Update(float dt, Rectangle bounds)
         /* Ball is launched, update normally */
         Ball_Update(&gBall, dt, bounds);
         /* Reset gauge animation so it starts fresh next time */
-        gGuideTimer = 0.0f;
-        gGuideFrame = 11;
-        gGuideDir = -1;
+        Gauge_Reset(&gGauge);
     }
 
     /* Collisions: ball vs paddle (only when launched) */
@@ -201,36 +163,11 @@ void GameScene_Draw(Rectangle bounds)
     
     /* Draw launch gauge when ball is stuck to paddle (pre-launch) */
     if (!gBallLaunched) {
-        Texture2D tex = GetGuideTextureByIndex(gGuideFrame);
         Rectangle rPad = Paddle_GetRect(&gPaddle);
-        float padCenterX = rPad.x + rPad.width * 0.5f;
-        float padTopY = rPad.y;
-        float gap = 20.0f; /* small gap above paddle */
-        int drawX = (int)(padCenterX - tex.width * 0.5f);
-        int drawY = (int)(padTopY - gap - tex.height);
-        DrawTexture(tex, drawX, drawY, Fade(WHITE, 0.85f));
-
-        /* Draw direction line showing where ball will launch (debug mode only) */
-        if (gShowDebugLine) {
-            Rectangle rBall = Ball_GetRect(&gBall);
-            float ballCenterX = rBall.x + rBall.width * 0.5f;
-            float ballCenterY = rBall.y + rBall.height * 0.5f;
-            
-            /* Compute launch angle from gauge frame (same as launch logic) */
-            const float minAngle = 3.14159265f / 4.0f;      /* 45° */
-            const float maxAngle = 3.0f * 3.14159265f / 4.0f; /* 135° */
-            float t = (float)(11 - gGuideFrame) / 10.0f;    /* reversed mapping */
-            float releaseAngle = minAngle + t * (maxAngle - minAngle);
-            
-            /* Draw line in launch direction */
-            const float lineLength = 80.0f;
-            Vector2 startPoint = { ballCenterX, ballCenterY };
-            Vector2 endPoint = {
-                ballCenterX + cosf(releaseAngle) * lineLength,
-                ballCenterY - sinf(releaseAngle) * lineLength /* negate Y for screen coords */
-            };
-            DrawLineEx(startPoint, endPoint, 2.0f, YELLOW);
-        }
+        Gauge_Draw(&gGauge, rPad);
+        
+        Rectangle rBall = Ball_GetRect(&gBall);
+        Gauge_DrawDebugLine(&gGauge, rBall);
     }
     Ball_Draw(&gBall);
 }
