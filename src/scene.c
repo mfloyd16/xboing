@@ -23,6 +23,20 @@ static int GetInnerWindowY(void) { return INNER_GAP_TOP; }
 static int GetInnerWindowWidth(void) { return WINDOW_WIDTH - INNER_GAP_LEFT - INNER_GAP_RIGHT; }
 static int GetInnerWindowHeight(void) { return WINDOW_HEIGHT - INNER_GAP_TOP - INNER_GAP_BOTTOM; }
 
+/* Cleanup a scene when leaving it */
+static void CleanupSceneById(SceneId id)
+{
+    switch (id) {
+        case SCENE_INTRO:       IntroScene_Cleanup(); break;
+        case SCENE_HOWTO:       HowToScene_Cleanup(); break;
+        case SCENE_PADDLE_TEST: PaddleTestScene_Cleanup(); break;
+        case SCENE_BALL_TEST:   BallTestScene_Cleanup(); break;
+        case SCENE_BLOCK_TEST:  BlockTestScene_Cleanup(); break;
+        case SCENE_GAME:        GameScene_Cleanup(); break;
+        default: break;
+    }
+}
+
 /* Draw bottom-left text in the outer window depending on current scene */
 static void DrawSceneFooter(SceneId current)
 {
@@ -97,7 +111,10 @@ bool Scene_Update(SceneId* current)
 {
     /* Update animation module */
     Anim_Update(GetFrameTime());
-    
+
+    SceneId old = *current;
+    bool running = true;
+
     switch (*current)
     {
         case SCENE_INTRO:
@@ -110,39 +127,46 @@ bool Scene_Update(SceneId* current)
             if (IsKeyPressed(KEY_B)) { *current = SCENE_BALL_TEST; }
             if (IsKeyPressed(KEY_L)) { *current = SCENE_BLOCK_TEST; }
             if (IsKeyPressed(KEY_S)) { *current = SCENE_GAME; }
-            return true;
+            break;
 
         case SCENE_HOWTO:
             if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) ||
                 IsMouseButtonPressed(MOUSE_LEFT_BUTTON) || IsKeyPressed(KEY_ESCAPE))
             {
-                return false; /* request exit */
+                running = false; /* request exit */
+                break;
             }
             if (IsKeyPressed(KEY_G)) { *current = SCENE_PADDLE_TEST; }
             if (IsKeyPressed(KEY_B)) { *current = SCENE_BALL_TEST; }
             if (IsKeyPressed(KEY_L)) { *current = SCENE_BLOCK_TEST; }
             if (IsKeyPressed(KEY_S)) { *current = SCENE_GAME; }
-            return true;
+            break;
 
         case SCENE_PADDLE_TEST:
             if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
-            return true;
+            break;
 
         case SCENE_BALL_TEST:
             if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
-            return true;
+            break;
 
         case SCENE_BLOCK_TEST:
             if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
-            return true;
+            break;
 
         case SCENE_GAME:
             if (IsKeyPressed(KEY_ESCAPE)) { *current = SCENE_INTRO; }
-            return true;
+            break;
 
         default:
-            return true;
+            break;
     }
+
+    if (*current != old) {
+        CleanupSceneById(old);
+    }
+
+    return running;
 }
 
 void Scene_Draw(SceneId current)
